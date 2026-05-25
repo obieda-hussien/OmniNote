@@ -1,0 +1,6 @@
+{
+  "name": "OmniNote",
+  "description": "Smart, modern note-taking app with Markdown and customization support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

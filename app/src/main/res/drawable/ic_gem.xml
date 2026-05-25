@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Top Crown Central Table (Glossy Sky Violet) -->
+    <path
+        android:fillColor="#818CF8"
+        android:pathData="M8,3 L16,3 L19,8 L5,8 Z" />
+
+    <!-- Top Left Upper Girdle (Lighter Electric Indigo Accent) -->
+    <path
+        android:fillColor="#C7D2FE"
+        android:pathData="M3,8 L5,8 L8,3 Z" />
+
+    <!-- Top Right Upper Girdle (Vibrant Indigo Reflection) -->
+    <path
+        android:fillColor="#A5B4FC"
+        android:pathData="M16,3 L19,8 L21,8 Z" />
+
+    <!-- Left Upper Girdle Corner (Extra Depth Accent) -->
+    <path
+        android:fillColor="#6366F1"
+        android:pathData="M1.5,8 L3,8 L8,3 L5,3 Z" />
+
+    <!-- Right Upper Girdle Corner (Slight Outer Shade) -->
+    <path
+        android:fillColor="#4F46E5"
+        android:pathData="M16,3 L19,3 L21,8 L22.5,8 Z" />
+
+    <!-- Main Center Core Pavilion (Brilliant Deep Indigo Prism) -->
+    <path
+        android:fillColor="#4F46E5"
+        android:pathData="M5,8 L19,8 L12,22 Z" />
+
+    <!-- Lower Left Facet Plane (Ultra Luminous Gradient Mirror) -->
+    <path
+        android:fillColor="#818CF8"
+        android:pathData="M3,8 L5,8 L12,22 Z" />
+
+    <!-- Far Outermost Left Dark Facet (High-Contrast Shadow Profile) -->
+    <path
+        android:fillColor="#312E81"
+        android:pathData="M1.5,8 L3,8 L12,22 Z" />
+
+    <!-- Lower Right Shade Plane (Medium Deep Midnight Sapphire) -->
+    <path
+        android:fillColor="#3730A3"
+        android:pathData="M19,8 L21,8 L12,22 Z" />
+
+    <!-- Far Outermost Right Shadow Facet (Deep Dark Anchor) -->
+    <path
+        android:fillColor="#1E1B4B"
+        android:pathData="M21,8 L22.5,8 L12,22 Z" />
+
+    <!-- Glossy Highlight Cut Plane (The premium professional white reflection flare) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.4"
+        android:pathData="M8,3 L12,3 L10,8 L5,8 Z" />
+
+    <!-- Center Soft Glow Prismatic Streak -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.2"
+        android:pathData="M11,8 L13,8 L12,22 Z" />
+
+    <!-- Magical Star Sparkle - Top Left -->
+    <path
+        android:fillColor="#E0E7FF"
+        android:pathData="M3.5,1.5 L4,2.5 L5,3 L4,3.5 L3.5,4.5 L3,3.5 L2,3 L3,2.5 Z" />
+
+    <!-- Magical Star Sparkle - Right Side Flare -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20.5,5 L21,6 L22,6.5 L21,7 L20.5,8 L20,7 L19,6.5 L20,6 Z" />
+</vector>
