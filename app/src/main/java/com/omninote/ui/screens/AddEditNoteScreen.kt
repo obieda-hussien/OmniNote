@@ -52,6 +52,7 @@ fun AddEditNoteScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val allNotes by viewModel.allNotes.collectAsStateWithLifecycle()
     val existingNote = remember(noteId, allNotes) {
         allNotes.find { it.id == noteId }
@@ -100,23 +101,26 @@ fun AddEditNoteScreen(
             val uris = viewModel.sharedUris!!
             uris.forEach { uri ->
                 val mimeType = context.contentResolver.getType(uri) ?: ""
+                val internalUri = copyUriToInternalStorage(context, uri, "shared_file")
+                
                 if (mimeType.startsWith("image/")) {
-                     content += "\n![Shared Image]($uri)\n"
+                     content += "\n![Shared Image]($internalUri)\n"
                 } else {
-                     var fileName = "Shared_File"
+                     var displayFileName = "Shared_File"
                      try {
                          context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                              val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
                              if (nameIdx != -1 && cursor.moveToFirst()) {
-                                 fileName = cursor.getString(nameIdx)
+                                 val n = cursor.getString(nameIdx)
+                                 if(!n.isNullOrBlank()) displayFileName = n
                              }
                          }
                      } catch (e: Exception) {}
                      
                      if (mimeType.startsWith("audio/")) {
-                         content += "\n[voice:$uri]($uri)\n"
+                         content += "\n[voice:$internalUri]($internalUri)\n"
                      } else {
-                         content += "\n[file:$fileName]($uri)\n"
+                         content += "\n[file:$displayFileName]($internalUri)\n"
                      }
                 }
             }
@@ -141,7 +145,10 @@ fun AddEditNoteScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
         uri?.let {
-            content += "\n![Image]($it)\n"
+            coroutineScope.launch {
+                val internalUri = copyUriToInternalStorage(context, it, "image.jpg")
+                content += "\n![Image]($internalUri)\n"
+            }
         }
     }
 
@@ -149,16 +156,21 @@ fun AddEditNoteScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
         uri?.let {
-            var fileName = "Attached_File"
-            try {
-                context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
-                    val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                    if (nameIdx != -1 && cursor.moveToFirst()) {
-                        fileName = cursor.getString(nameIdx)
+            coroutineScope.launch {
+                var displayFileName = "Attached_File"
+                try {
+                    context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
+                        val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIdx != -1 && cursor.moveToFirst()) {
+                            val n = cursor.getString(nameIdx)
+                            if (!n.isNullOrBlank()) displayFileName = n
+                        }
                     }
-                }
-            } catch (e: Exception) {}
-            content += "\n[file:$fileName]($it)\n"
+                } catch (e: Exception) {}
+                
+                val internalUri = copyUriToInternalStorage(context, it, displayFileName)
+                content += "\n[file:$displayFileName]($internalUri)\n"
+            }
         }
     }
 
@@ -1601,6 +1613,36 @@ fun PremiumInteractiveCard(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier.size(20.dp)
             )
+        }
+    }
+}
+
+suspend fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri, defaultName: String): android.net.Uri {
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        var fileName = defaultName
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIdx != -1 && cursor.moveToFirst()) {
+                    val name = cursor.getString(nameIdx)
+                    if (!name.isNullOrBlank()) fileName = name
+                }
+            }
+        } catch (e: Exception) {}
+        
+        val time = System.currentTimeMillis()
+        val finalFileName = "${time}_${fileName.replace(" ", "_").replace("/", "_")}"
+        
+        val destFile = java.io.File(context.filesDir, finalFileName)
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                java.io.FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            android.net.Uri.fromFile(destFile)
+        } catch (e: Exception) {
+            uri 
         }
     }
 }

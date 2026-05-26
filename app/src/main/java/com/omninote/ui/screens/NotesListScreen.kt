@@ -776,7 +776,12 @@ fun NotesListScreen(
                                     placementSpec = tween(500, easing = FastOutSlowInEasing)
                                 ),
                                 backgroundContent = {
-                                    val direction = dismissState.dismissDirection
+                                    val activeDirection = if (dismissState.targetValue != SwipeToDismissBoxValue.Settled) {
+                                        dismissState.targetValue
+                                    } else {
+                                        dismissState.dismissDirection
+                                    }
+                                    
                                     val color by animateColorAsState(
                                         when (dismissState.targetValue) {
                                             SwipeToDismissBoxValue.Settled -> Color.Transparent
@@ -788,12 +793,12 @@ fun NotesListScreen(
                                             }
                                         }
                                     )
-                                    val alignment = when (direction) {
+                                    val alignment = when (activeDirection) {
                                         SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
                                         SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
                                         else -> Alignment.CenterStart
                                     }
-                                    val icon = when (direction) {
+                                    val icon = when (activeDirection) {
                                         SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
                                             "TRASHED" -> Icons.Default.Restore
                                             "ARCHIVED" -> Icons.Default.Unarchive
@@ -801,7 +806,7 @@ fun NotesListScreen(
                                         }
                                         else -> Icons.Default.Delete
                                     }
-                                    val iconTint = when (direction) {
+                                    val iconTint = when (activeDirection) {
                                         SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
                                             "TRASHED" -> MaterialTheme.colorScheme.onPrimaryContainer
                                             "ARCHIVED" -> MaterialTheme.colorScheme.onSecondaryContainer
@@ -818,7 +823,7 @@ fun NotesListScreen(
                                             .padding(horizontal = 20.dp),
                                         contentAlignment = alignment
                                     ) {
-                                        if (direction != SwipeToDismissBoxValue.Settled) {
+                                        if (activeDirection != SwipeToDismissBoxValue.Settled) {
                                             Icon(
                                                 imageVector = icon,
                                                 contentDescription = "Swipe Action",
