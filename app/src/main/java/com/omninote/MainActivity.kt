@@ -1,4 +1,4 @@
-package com.example
+package com.omninote
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -15,14 +15,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.room.Room
-import com.example.data.AppDatabase
-import com.example.data.NoteRepository
-import com.example.ui.navigation.Screen
-import com.example.ui.screens.AddEditNoteScreen
-import com.example.ui.screens.NotesListScreen
-import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.viewmodels.NotesViewModel
-import com.example.ui.viewmodels.NotesViewModelFactory
+import com.omninote.data.AppDatabase
+import com.omninote.data.NoteRepository
+import com.omninote.ui.navigation.Screen
+import com.omninote.ui.screens.AddEditNoteScreen
+import com.omninote.ui.screens.NotesListScreen
+import com.omninote.ui.theme.MyApplicationTheme
+import com.omninote.ui.viewmodels.NotesViewModel
+import com.omninote.ui.viewmodels.NotesViewModelFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,6 +37,23 @@ class MainActivity : ComponentActivity() {
         
         val repository = NoteRepository(database.noteDao())
         
+        var initialSharedText: String? = null
+        var initialSharedUris: List<android.net.Uri>? = null
+
+        if (intent?.action == android.content.Intent.ACTION_SEND) {
+            if ("text/plain" == intent.type) {
+                initialSharedText = intent.getStringExtra(android.content.Intent.EXTRA_TEXT)
+            } else {
+                val uri = intent.getParcelableExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)
+                if (uri != null) initialSharedUris = listOf(uri)
+            }
+            intent.action = android.content.Intent.ACTION_MAIN
+        } else if (intent?.action == android.content.Intent.ACTION_SEND_MULTIPLE) {
+            val uris = intent.getParcelableArrayListExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)
+            if (uris != null) initialSharedUris = uris
+            intent.action = android.content.Intent.ACTION_MAIN
+        }
+        
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
@@ -45,10 +62,24 @@ class MainActivity : ComponentActivity() {
                     val viewModel: NotesViewModel = viewModel(
                         factory = NotesViewModelFactory(repository)
                     )
+                    
+                    // Pass it if it's the first time
+                    val isFirstRun = remember { androidx.compose.runtime.mutableStateOf(true) }
+                    if (isFirstRun.value) {
+                        if (initialSharedText != null) viewModel.sharedText = initialSharedText
+                        if (initialSharedUris != null) viewModel.sharedUris = initialSharedUris
+                        isFirstRun.value = false
+                    }
+
+                    val startDestination = if (initialSharedText != null || initialSharedUris != null) {
+                        Screen.AddEditNote.createRoute(null)
+                    } else {
+                        Screen.Home.route
+                    }
 
                     NavHost(
                         navController = navController,
-                        startDestination = Screen.Home.route
+                        startDestination = startDestination
                     ) {
                         composable(Screen.Home.route) {
                             NotesListScreen(

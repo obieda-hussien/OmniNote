@@ -1,4 +1,4 @@
-package com.example
+package com.omninote
 
 import org.junit.Assert.*
 import org.junit.Test

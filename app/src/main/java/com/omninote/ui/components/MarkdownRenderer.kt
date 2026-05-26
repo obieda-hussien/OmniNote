@@ -1,4 +1,4 @@
-package com.example.ui.components
+package com.omninote.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -65,43 +65,83 @@ fun parseInlineStyles(
     
     var remainingText = text
     while (remainingText.isNotEmpty()) {
-        val colorRegex = Regex("""^\[color:(#[0-9a-fA-F]{6})\]\((.*?)\)""")
-        val bgRegex = Regex("""^\[bg:(#[0-9a-fA-F]{6})\]\((.*?)\)""")
+        // Parse Color & Background tags with balanced parenthesis counting
+        val colorPrefixMatch = Regex("""^\[color:(#[0-9a-fA-F]{6,8})\]\(""").find(remainingText)
+        val bgPrefixMatch = Regex("""^\[bg:(#[0-9a-fA-F]{6,8})\]\(""").find(remainingText)
+        
         val codeRegex = Regex("""^`(.*?)`""")
         val highlightRegex = Regex("""^==(.*?)==""")
         val boldRegex = Regex("""^\*\*(.*?)\*\*""")
         val italicRegex = Regex("""^\*(.*?)\*""")
         val italicUnderlineRegex = Regex("""^_(.*?)_""")
 
-        val colorMatch = colorRegex.find(remainingText)
-        val bgMatch = bgRegex.find(remainingText)
         val codeMatch = codeRegex.find(remainingText)
         val highlightMatch = highlightRegex.find(remainingText)
         val boldMatch = boldRegex.find(remainingText)
         val italicMatch = italicRegex.find(remainingText) ?: italicUnderlineRegex.find(remainingText)
 
         when {
-            colorMatch != null -> {
-                val hex = colorMatch.groupValues[1]
-                val insideValue = colorMatch.groupValues[2]
-                val color = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { primaryColor }
+            colorPrefixMatch != null -> {
+                val hex = colorPrefixMatch.groupValues[1]
+                val prefix = colorPrefixMatch.value
+                var depth = 1
+                var endIndex = -1
+                for (i in prefix.length until remainingText.length) {
+                    if (remainingText[i] == '(') depth++
+                    else if (remainingText[i] == ')') {
+                        depth--
+                        if (depth == 0) {
+                            endIndex = i
+                            break
+                        }
+                    }
+                }
                 
-                builder.pushStyle(SpanStyle(color = color))
-                builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
-                builder.pop()
-                
-                remainingText = remainingText.substring(colorMatch.value.length)
+                if (endIndex != -1) {
+                    val insideValue = remainingText.substring(prefix.length, endIndex)
+                    val color = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { primaryColor }
+                    
+                    builder.pushStyle(SpanStyle(color = color))
+                    builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
+                    builder.pop()
+                    
+                    remainingText = remainingText.substring(endIndex + 1)
+                } else {
+                    // Fallback to treat as plain text if no matching closing bracket was found
+                    builder.append(remainingText.first())
+                    remainingText = remainingText.drop(1)
+                }
             }
-            bgMatch != null -> {
-                val hex = bgMatch.groupValues[1]
-                val insideValue = bgMatch.groupValues[2]
-                val bgColor = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { primaryColor.copy(alpha = 0.2f) }
+            bgPrefixMatch != null -> {
+                val hex = bgPrefixMatch.groupValues[1]
+                val prefix = bgPrefixMatch.value
+                var depth = 1
+                var endIndex = -1
+                for (i in prefix.length until remainingText.length) {
+                    if (remainingText[i] == '(') depth++
+                    else if (remainingText[i] == ')') {
+                        depth--
+                        if (depth == 0) {
+                            endIndex = i
+                            break
+                        }
+                    }
+                }
                 
-                builder.pushStyle(SpanStyle(background = bgColor, color = if (hex == "#2D26A0" || hex == "#9A5500" || hex == "#8B2060") Color.White else Color.Unspecified))
-                builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
-                builder.pop()
-                
-                remainingText = remainingText.substring(bgMatch.value.length)
+                if (endIndex != -1) {
+                    val insideValue = remainingText.substring(prefix.length, endIndex)
+                    val bgColor = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { primaryColor.copy(alpha = 0.2f) }
+                    
+                    builder.pushStyle(SpanStyle(background = bgColor))
+                    builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
+                    builder.pop()
+                    
+                    remainingText = remainingText.substring(endIndex + 1)
+                } else {
+                    // Fallback to treat as plain text if no matching closing bracket was found
+                    builder.append(remainingText.first())
+                    remainingText = remainingText.drop(1)
+                }
             }
             codeMatch != null -> {
                 val insideValue = codeMatch.groupValues[1]
@@ -428,30 +468,54 @@ fun ImageLayout(uriString: String, description: String) {
     }
 
     if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text(description.ifBlank { "Image Preview" }) },
-            text = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(350.dp),
-                    contentAlignment = Alignment.Center
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showDialog = false }) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp)),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    coil.compose.AsyncImage(
-                        model = uriString,
-                        contentDescription = description,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text("Close")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = description.ifBlank { "Image Preview" },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        )
+                        IconButton(onClick = { showDialog = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 200.dp, max = 450.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        coil.compose.AsyncImage(
+                            model = uriString,
+                            contentDescription = description,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                        )
+                    }
                 }
             }
-        )
+        }
     }
 }
 

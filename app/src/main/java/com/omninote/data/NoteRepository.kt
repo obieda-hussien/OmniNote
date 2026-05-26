@@ -1,15 +1,20 @@
-package com.example.data
+package com.omninote.data
 
 import kotlinx.coroutines.flow.Flow
 
 class NoteRepository(private val noteDao: NoteDao) {
     val allNotes: Flow<List<NoteEntity>> = noteDao.getAllNotes()
+    val activeNotes: Flow<List<NoteEntity>> = noteDao.getActiveNotes()
+    val archivedNotes: Flow<List<NoteEntity>> = noteDao.getArchivedNotes()
+    val trashedNotes: Flow<List<NoteEntity>> = noteDao.getTrashedNotes()
 
     suspend fun getNoteById(id: Int): NoteEntity? = noteDao.getNoteById(id)
 
     suspend fun insert(note: NoteEntity) = noteDao.insertNote(note)
 
     suspend fun delete(note: NoteEntity) = noteDao.deleteNote(note)
+    
+    suspend fun emptyTrash() = noteDao.emptyTrash()
     
     suspend fun togglePin(id: Int, isPinned: Boolean) = noteDao.updatePinnedStatus(id, isPinned)
 }
