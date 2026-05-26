@@ -560,11 +560,34 @@ fun AudioPlayerLayout(uriString: String, label: String) {
             try {
                 mediaPlayer = android.media.MediaPlayer().apply {
                     setDataSource(context, android.net.Uri.parse(uriString))
-                    prepare()
-                    totalDuration = duration
+                    setOnPreparedListener { mp ->
+                        totalDuration = mp.duration
+                        mp.start()
+                        isPlaying = true
+                    }
+                    setOnErrorListener { _, _, _ ->
+                        isPlaying = false
+                        android.widget.Toast.makeText(context, "Cannot play audio. Permission denied or file missing.", android.widget.Toast.LENGTH_SHORT).show()
+                        true
+                    }
+                    prepareAsync()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                android.widget.Toast.makeText(context, "Cannot play audio. Permission denied or file missing.", android.widget.Toast.LENGTH_SHORT).show()
+                mediaPlayer?.release()
+                mediaPlayer = null
+                isPlaying = false
+            }
+        } else {
+            mediaPlayer?.let { player ->
+                if (isPlaying) {
+                    player.pause()
+                    isPlaying = false
+                } else {
+                    player.start()
+                    isPlaying = true
+                }
             }
         }
     }
@@ -583,15 +606,6 @@ fun AudioPlayerLayout(uriString: String, label: String) {
                 onClick = {
                     try {
                         initPlayer()
-                        mediaPlayer?.let { player ->
-                            if (isPlaying) {
-                                player.pause()
-                                isPlaying = false
-                            } else {
-                                player.start()
-                                isPlaying = true
-                            }
-                        }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -667,8 +681,19 @@ fun FileAttachmentLayout(uriString: String, filename: String) {
             .clip(RoundedCornerShape(12.dp))
             .clickable {
                 try {
+                    val parsedUri = android.net.Uri.parse(uriString)
+                    val shareUri = if (parsedUri.scheme == "file") {
+                        val file = java.io.File(parsedUri.path ?: "")
+                        androidx.core.content.FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            file
+                        )
+                    } else {
+                        parsedUri
+                    }
                     val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                        setDataAndType(android.net.Uri.parse(uriString), "*/*")
+                        setDataAndType(shareUri, "*/*")
                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     context.startActivity(android.content.Intent.createChooser(intent, "Open File With"))
