@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Omni Note</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --text-color: #212529;
+            --accent-color: #0d6efd;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 40px 20px;
+            padding: 40px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeUp 0.6s ease-out forwards;
+        }
+
+        @keyframes fadeUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            color: var(--accent-color);
+            margin-top: 0;
+            font-size: 2.5rem;
+        }
+
+        h2 {
+            margin-top: 30px;
+            color: #343a40;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+
+        p, li {
+            font-size: 1.1rem;
+            color: #495057;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #121212;
+                --text-color: #e0e0e0;
+                --accent-color: #90caf9;
+                --card-bg: #1e1e1e;
+            }
+            h2 {
+                color: #ffffff;
+                border-bottom-color: #333333;
+            }
+            p, li {
+                color: #b0b0b0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Privacy Policy</h1>
+        <p><strong>Last Updated:</strong> May 27, 2026</p>
+
+        <p>Welcome to <strong>Omni Note</strong>. Your privacy is critically important to us. This Privacy Policy explains our commitment to protecting your data when you use our mobile application.</p>
+
+        <h2>1. Data Collection and Usage</h2>
+        <p><strong>We do not collect, transmit, or store any of your personal data on external servers.</strong></p>
+        <p>Omni Note is an offline-first application. All of your notes, lists, and application settings are stored locally entirely on your device. We do not have access to your content.</p>
+
+        <h2>2. Third-Party Services</h2>
+        <p>Our application does not integrate with third-party analytics or advertising services that would track your behavior or collect your personal identifiable information.</p>
+
+        <h2>3. Permissions</h2>
+        <p>The app only requests permissions that are strictly necessary for its core functionality. It does not require internet access, microphone, camera, or location permissions unless explicitly requested for a specific feature you initiate entirely on your device.</p>
+
+        <h2>4. Data Security</h2>
+        <p>Because your data remains exclusively on your device, its security inherently relies on the physical security of your device and its operating system locks (such as PIN, fingerprint, or facial recognition). We recommend keeping your device secured.</p>
+
+        <h2>5. Changes to This Policy</h2>
+        <p>We may update our Privacy Policy from time to time. Since we have no way to contact you directly, any updates will be reflected in this document and effective immediately upon updating the app or this page.</p>
+
+        <h2>6. Contact Us</h2>
+        <p>If you have any questions or suggestions about our Privacy Policy, do not hesitate to contact us at the developer email provided on our Google Play Store listing.</p>
+
+        <div class="footer">
+            &copy; 2026 Omni Note. All rights reserved.
+        </div>
+    </div>
+
+</body>
+</html>

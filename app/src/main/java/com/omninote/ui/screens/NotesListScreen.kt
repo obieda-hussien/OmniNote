@@ -4,6 +4,10 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,11 +40,26 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import com.omninote.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.omninote.data.NoteEntity
 import com.omninote.ui.viewmodels.NotesViewModel
 import android.content.Intent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import kotlinx.coroutines.launch
 
 /**
@@ -83,6 +102,255 @@ fun highlightSearchQuery(
     return builder.toAnnotatedString()
 }
 
+@Composable
+fun BeautifulEmptyStateGraphic(
+    isSearchOrFilter: Boolean,
+    tabType: String,
+    primaryColor: Color,
+    secondaryColor: Color
+) {
+    Canvas(modifier = Modifier.size(140.dp)) {
+        val width = size.width
+        val height = size.height
+        
+        if (isSearchOrFilter) {
+            // Draw a gorgeous futuristic glowing Search Magnifying Glass
+            drawCircle(
+                color = primaryColor.copy(alpha = 0.08f),
+                radius = width * 0.45f
+            )
+            drawCircle(
+                color = primaryColor.copy(alpha = 0.15f),
+                radius = width * 0.3f
+            )
+            drawLine(
+                color = primaryColor,
+                start = Offset(width * 0.65f, height * 0.65f),
+                end = Offset(width * 0.85f, height * 0.85f),
+                strokeWidth = 12f,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
+            drawCircle(
+                color = primaryColor,
+                radius = width * 0.22f,
+                center = Offset(width * 0.45f, height * 0.45f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 8f)
+            )
+            drawCircle(
+                color = secondaryColor,
+                radius = 6f,
+                center = Offset(width * 0.38f, height * 0.38f)
+            )
+        } else {
+            when (tabType) {
+                "ACTIVE" -> {
+                    // Draw a stylized vector notebook page with rounded corners
+                    drawCircle(
+                        color = primaryColor.copy(alpha = 0.08f),
+                        radius = width * 0.45f
+                    )
+                    
+                    val cardW = width * 0.45f
+                    val cardH = height * 0.6f
+                    val cardX = (width - cardW) / 2
+                    val cardY = (height - cardH) / 2
+                    
+                    drawRoundRect(
+                        color = primaryColor.copy(alpha = 0.12f),
+                        topLeft = Offset(cardX, cardY),
+                        size = Size(cardW, cardH),
+                        cornerRadius = CornerRadius(16f, 16f)
+                    )
+                    
+                    drawRoundRect(
+                        color = primaryColor,
+                        topLeft = Offset(cardX, cardY),
+                        size = Size(cardW, cardH),
+                        cornerRadius = CornerRadius(16f, 16f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                    )
+                    
+                    val startLineX = cardX + 12f
+                    val endLineX = cardX + cardW - 12f
+                    val firstLineY = cardY + 20f
+                    val lineSpacing = 20f
+                    
+                    drawLine(
+                        color = primaryColor,
+                        start = Offset(startLineX, firstLineY),
+                        end = Offset(cardX + cardW * 0.6f, firstLineY),
+                        strokeWidth = 4f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    
+                    drawLine(
+                        color = primaryColor.copy(alpha = 0.5f),
+                        start = Offset(startLineX, firstLineY + lineSpacing),
+                        end = Offset(endLineX, firstLineY + lineSpacing),
+                        strokeWidth = 4f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    
+                    drawLine(
+                        color = primaryColor.copy(alpha = 0.5f),
+                        start = Offset(startLineX, firstLineY + lineSpacing * 2),
+                        end = Offset(cardX + cardW * 0.8f, firstLineY + lineSpacing * 2),
+                        strokeWidth = 4f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    
+                    drawCircle(
+                        color = secondaryColor,
+                        radius = 8f,
+                        center = Offset(cardX + cardW + 10f, cardY - 5f)
+                    )
+                    drawCircle(
+                        color = secondaryColor.copy(alpha = 0.4f),
+                        radius = 14f,
+                        center = Offset(cardX + cardW + 10f, cardY - 5f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
+                    )
+                }
+                "ARCHIVED" -> {
+                    // Draw a gorgeous archive secure vault / safe box
+                    drawCircle(
+                        color = primaryColor.copy(alpha = 0.08f),
+                        radius = width * 0.45f
+                    )
+                    
+                    val boxW = width * 0.5f
+                    val boxH = height * 0.45f
+                    val boxX = (width - boxW) / 2
+                    val boxY = (height - boxH) / 2 + 10f
+                    
+                    // Box base
+                    drawRoundRect(
+                        color = primaryColor.copy(alpha = 0.1f),
+                        topLeft = Offset(boxX, boxY),
+                        size = Size(boxW, boxH),
+                        cornerRadius = CornerRadius(12f, 12f)
+                    )
+                    drawRoundRect(
+                        color = primaryColor,
+                        topLeft = Offset(boxX, boxY),
+                        size = Size(boxW, boxH),
+                        cornerRadius = CornerRadius(12f, 12f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                    )
+                    
+                    // Lid top
+                    val lidW = boxW + 16f
+                    val lidH = 14f
+                    val lidX = boxX - 8f
+                    val lidY = boxY - 14f
+                    drawRoundRect(
+                        color = primaryColor,
+                        topLeft = Offset(lidX, lidY),
+                        size = Size(lidW, lidH),
+                        cornerRadius = CornerRadius(6f, 6f)
+                    )
+                    
+                    // Lock handle
+                    drawRoundRect(
+                        color = secondaryColor,
+                        topLeft = Offset(width / 2 - 16f, boxY + boxH * 0.35f),
+                        size = Size(32f, 12f),
+                        cornerRadius = CornerRadius(6f, 6f)
+                    )
+                    
+                    // Star decoration
+                    drawCircle(
+                        color = secondaryColor,
+                        radius = 6f,
+                        center = Offset(width / 2, boxY + boxH * 0.35f - 16f)
+                    )
+                }
+                "TRASHED" -> {
+                    // Draw a recycle trash bin
+                    drawCircle(
+                        color = primaryColor.copy(alpha = 0.08f),
+                        radius = width * 0.45f
+                    )
+                    
+                    val binW = width * 0.38f
+                    val binH = height * 0.48f
+                    val binX = (width - binW) / 2
+                    val binY = (height - binH) / 2 + 10f
+                    
+                    // Bin body
+                    drawRoundRect(
+                        color = primaryColor.copy(alpha = 0.1f),
+                        topLeft = Offset(binX, binY),
+                        size = Size(binW, binH),
+                        cornerRadius = CornerRadius(8f, 8f)
+                    )
+                    drawRoundRect(
+                        color = primaryColor,
+                        topLeft = Offset(binX, binY),
+                        size = Size(binW, binH),
+                        cornerRadius = CornerRadius(8f, 8f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                    )
+                    
+                    // Top lid line
+                    drawLine(
+                        color = primaryColor,
+                        start = Offset(binX - 12f, binY),
+                        end = Offset(binX + binW + 12f, binY),
+                        strokeWidth = 6f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    
+                    // Vertical lines on bin
+                    drawLine(
+                        color = primaryColor.copy(alpha = 0.5f),
+                        start = Offset(binX + binW * 0.3f, binY + 16f),
+                        end = Offset(binX + binW * 0.3f, binY + binH - 16f),
+                        strokeWidth = 4f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    drawLine(
+                        color = primaryColor.copy(alpha = 0.5f),
+                        start = Offset(binX + binW * 0.7f, binY + 16f),
+                        end = Offset(binX + binW * 0.7f, binY + binH - 16f),
+                        strokeWidth = 4f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    
+                    // Cross / X badge on trash indicating deleted items
+                    drawLine(
+                        color = secondaryColor,
+                        start = Offset(width / 2 - 10f, binY + binH / 2 - 10f),
+                        end = Offset(width / 2 + 10f, binY + binH / 2 + 10f),
+                        strokeWidth = 4f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    drawLine(
+                        color = secondaryColor,
+                        start = Offset(width / 2 + 10f, binY + binH / 2 - 10f),
+                        end = Offset(width / 2 - 10f, binY + binH / 2 + 10f),
+                        strokeWidth = 4f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                }
+            }
+        }
+    }
+}
+
+enum class SnackbarType {
+    INFO, SUCCESS, ERROR, WARNING
+}
+
+data class CustomSnackbarData(
+    val id: Long,
+    val title: String,
+    val message: String,
+    val type: SnackbarType,
+    val actionLabel: String? = null,
+    val onAction: (() -> Unit)? = null
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesListScreen(
@@ -90,11 +358,57 @@ fun NotesListScreen(
     onNavigateToAddNote: () -> Unit,
     onNavigateToEditNote: (Int) -> Unit
 ) {
-    var currentTab by remember { mutableStateOf("ACTIVE") }
+    val haptic = LocalHapticFeedback.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    var customSnackbarData by remember { mutableStateOf<CustomSnackbarData?>(null) }
+    val animatableProgress = remember { androidx.compose.animation.core.Animatable(1f) }
+    var snackbarVisible by remember { mutableStateOf(false) }
+
+    fun showCustomSnackbar(
+        title: String,
+        message: String,
+        type: SnackbarType,
+        actionLabel: String? = null,
+        onAction: (() -> Unit)? = null
+    ) {
+        customSnackbarData = CustomSnackbarData(
+            id = System.currentTimeMillis(),
+            title = title,
+            message = message,
+            type = type,
+            actionLabel = actionLabel,
+            onAction = onAction
+        )
+    }
+
+    LaunchedEffect(customSnackbarData) {
+        if (customSnackbarData != null) {
+            animatableProgress.snapTo(1f)
+            snackbarVisible = true
+            animatableProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 5000, easing = androidx.compose.animation.core.LinearEasing)
+            )
+            snackbarVisible = false
+            kotlinx.coroutines.delay(300)
+            customSnackbarData = null
+        } else {
+            snackbarVisible = false
+        }
+    }
     
     val activeNotes by viewModel.activeNotes.collectAsStateWithLifecycle()
     val archivedNotes by viewModel.archivedNotes.collectAsStateWithLifecycle()
     val trashedNotes by viewModel.trashedNotes.collectAsStateWithLifecycle()
+
+    // 3-tab smooth ViewPager
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
+    val currentTab = when (pagerState.currentPage) {
+        0 -> "ACTIVE"
+        1 -> "ARCHIVED"
+        else -> "TRASHED"
+    }
 
     val notes = when (currentTab) {
         "ACTIVE" -> activeNotes
@@ -110,8 +424,118 @@ fun NotesListScreen(
     var filterPinnedOnly by remember { mutableStateOf(false) }
     var isGridView by remember { mutableStateOf(true) }
 
-    // Snachbar state for undo
-    val snackbarHostState = remember { SnackbarHostState() }
+    // Scroll state handlers for top and bottom bar hide/show dynamics
+    val gridState0 = rememberLazyStaggeredGridState()
+    val listState0 = rememberLazyListState()
+
+    val gridState1 = rememberLazyStaggeredGridState()
+    val listState1 = rememberLazyListState()
+
+    val gridState2 = rememberLazyStaggeredGridState()
+    val listState2 = rememberLazyListState()
+
+    var isTopHeaderVisible by remember { mutableStateOf(true) }
+    var isBottomBarVisible by remember { mutableStateOf(true) }
+
+    val isCurrentlyAtTop = remember {
+        derivedStateOf {
+            when (pagerState.currentPage) {
+                0 -> {
+                    if (isGridView) {
+                        gridState0.firstVisibleItemIndex == 0 && gridState0.firstVisibleItemScrollOffset == 0
+                    } else {
+                        listState0.firstVisibleItemIndex == 0 && listState0.firstVisibleItemScrollOffset == 0
+                    }
+                }
+                1 -> {
+                    if (isGridView) {
+                        gridState1.firstVisibleItemIndex == 0 && gridState1.firstVisibleItemScrollOffset == 0
+                    } else {
+                        listState1.firstVisibleItemIndex == 0 && listState1.firstVisibleItemScrollOffset == 0
+                    }
+                }
+                else -> {
+                    if (isGridView) {
+                        gridState2.firstVisibleItemIndex == 0 && gridState2.firstVisibleItemScrollOffset == 0
+                    } else {
+                        listState2.firstVisibleItemIndex == 0 && listState2.firstVisibleItemScrollOffset == 0
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.noteEvent.collect { event ->
+            when (event) {
+                is com.omninote.ui.viewmodels.NoteEvent.Trashed -> {
+                    showCustomSnackbar(
+                        title = "Moved to Trash",
+                        message = event.note.title.ifBlank { "Untitled Note" },
+                        type = SnackbarType.INFO,
+                        actionLabel = "UNDO",
+                        onAction = {
+                            viewModel.restoreFromTrash(event.note)
+                        }
+                    )
+                }
+                is com.omninote.ui.viewmodels.NoteEvent.Archived -> {
+                    showCustomSnackbar(
+                        title = "Note Archived",
+                        message = event.note.title.ifBlank { "Untitled Note" },
+                        type = SnackbarType.INFO,
+                        actionLabel = "UNDO",
+                        onAction = {
+                            viewModel.unarchiveNote(event.note)
+                        }
+                    )
+                }
+                is com.omninote.ui.viewmodels.NoteEvent.Restored -> {
+                    showCustomSnackbar(
+                        title = "Note Restored",
+                        message = event.note.title.ifBlank { "Untitled Note" },
+                        type = SnackbarType.SUCCESS
+                    )
+                }
+                is com.omninote.ui.viewmodels.NoteEvent.Unarchived -> {
+                    showCustomSnackbar(
+                        title = "Note Unarchived",
+                        message = event.note.title.ifBlank { "Untitled Note" },
+                        type = SnackbarType.SUCCESS
+                    )
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(isCurrentlyAtTop.value) {
+        if (isCurrentlyAtTop.value) {
+            isTopHeaderVisible = true
+        }
+    }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                val delta = available.y
+                if (delta < -12f) { // Scrolling down -> hide
+                    isBottomBarVisible = false
+                    isTopHeaderVisible = false
+                } else if (delta > 12f) { // Scrolling up -> show bottom bar, only show header if we are close to top
+                    isBottomBarVisible = true
+                    if (isCurrentlyAtTop.value) {
+                        isTopHeaderVisible = true
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    // Snackbar state for undo
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -125,9 +549,13 @@ fun NotesListScreen(
     var unlockError by remember { mutableStateOf(false) }
     var unlockActionType by remember { mutableStateOf("") }
 
+    // Permanent deletion confirmation state
+    var noteToDeletePermanently by remember { mutableStateOf<NoteEntity?>(null) }
+
     // Retrieve unique tags from all stored notes
-    val allTags = remember(notes) {
-        notes.flatMap { note ->
+    val allTags = remember(activeNotes, archivedNotes, trashedNotes) {
+        val all = activeNotes + archivedNotes + trashedNotes
+        all.flatMap { note ->
             note.tags.split(",")
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
@@ -203,15 +631,84 @@ fun NotesListScreen(
     val totalNotesCount = notes.size
     val pinnedNotesCount = notes.count { it.isPinned }
     val audioNotesCount = notes.count { it.content.contains("[voice:") || it.content.contains("[audio:") }
-    val checklistItemsCount = notes.sumOf { note ->
-        note.content.split("\n").count { it.trim().startsWith("- [ ]") || it.trim().startsWith("- [x]") || it.trim().startsWith("* [ ") }
-    }
 
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { snackbarData ->
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CanvasCustomIcon(
+                                    type = if (snackbarData.visuals.message.contains("Trash", ignoreCase = true) || snackbarData.visuals.message.contains("trash", ignoreCase = true)) {
+                                        CanvasIconType.DELETE
+                                    } else {
+                                        CanvasIconType.TICK
+                                    },
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = snackbarData.visuals.message,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        
+                        snackbarData.visuals.actionLabel?.let { actionLabel ->
+                            TextButton(
+                                onClick = { snackbarData.performAction() },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = actionLabel,
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         topBar = {
             Column(
                 modifier = Modifier
@@ -225,275 +722,256 @@ fun NotesListScreen(
                             )
                         )
                     )
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Top header row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Custom professional micro gem icon with styling
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)))
-                                .padding(2.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(MaterialTheme.colorScheme.surface)
-                                    .padding(6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = com.omninote.R.drawable.ic_gem),
-                                    contentDescription = "Premium OmniNote Gem",
-                                    tint = Color.Unspecified, 
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "OmniNote",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = (-0.5).sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Smart Workspace",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-
-                    // Layout Actions Row
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = { isGridView = !isGridView },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        ) {
-                            AnimatedContent(targetState = isGridView, label = "LayoutToggle") { grid ->
-                                Icon(
-                                    imageVector = if (grid) Icons.Default.ViewList else Icons.Default.GridView,
-                                    contentDescription = "Toggle layout",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        IconButton(
-                            onClick = { showSortBottomSheet = true },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FilterList,
-                                contentDescription = "Sort Filters",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
-                
-                var isSearchActive by remember { mutableStateOf(false) }
-
                 AnimatedVisibility(
-                    visible = !isSearchActive, 
-                    enter = expandVertically(animationSpec = tween(400)) + fadeIn(tween(400)), 
+                    visible = isTopHeaderVisible,
+                    enter = expandVertically(animationSpec = tween(400)) + fadeIn(tween(400)),
                     exit = shrinkVertically(animationSpec = tween(400)) + fadeOut(tween(400))
                 ) {
-                    // Modern Statistics Widget Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha=0.4f), MaterialTheme.colorScheme.tertiaryContainer.copy(alpha=0.4f))))
-                            .border(width = 1.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), shape = RoundedCornerShape(20.dp))
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        StatBadge(icon = Icons.Default.StickyNote2, label = "Notes", value = "$totalNotesCount", color = MaterialTheme.colorScheme.primary)
-                        Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)))
-                        StatBadge(icon = Icons.Default.PushPin, label = "Pinned", value = "$pinnedNotesCount", color = MaterialTheme.colorScheme.tertiary)
-                        Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)))
-                        StatBadge(icon = Icons.Default.Mic, label = "Audio", value = "$audioNotesCount", color = MaterialTheme.colorScheme.secondary)
+                        // Top header row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    val headerTitle = when (currentTab) {
+                                        "ACTIVE" -> "OmniNote"
+                                        "ARCHIVED" -> "Vault"
+                                        else -> "Trash Bin"
+                                    }
+                                    val headerSub = when (currentTab) {
+                                        "ACTIVE" -> "Workspace · $totalNotesCount Note" + (if(totalNotesCount != 1) "s" else "") + (if(pinnedNotesCount > 0) " ($pinnedNotesCount Pinned)" else "")
+                                        "ARCHIVED" -> "Vault · $totalNotesCount Archived"
+                                        else -> "Trash · $totalNotesCount Deleted"
+                                    }
+                                    Text(
+                                        text = headerTitle,
+                                        style = MaterialTheme.typography.titleLarge.copy(
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = (-0.5).sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = headerSub,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = when (currentTab) {
+                                            "ACTIVE" -> MaterialTheme.colorScheme.primary
+                                            "ARCHIVED" -> MaterialTheme.colorScheme.secondary
+                                            else -> MaterialTheme.colorScheme.error
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
-                // Premium Search input bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { 
-                        searchQuery = it 
-                        if (it.isNotEmpty()) isSearchActive = true
-                    },
-                    shape = RoundedCornerShape(24.dp),
-                    placeholder = {
-                        Text("Search in notes...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = if (isSearchActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = ""; isSearchActive = false }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Premium Search input bar combined with Layout and Filter buttons (Always stays visible!)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        shape = RoundedCornerShape(24.dp),
+                        placeholder = {
+                            Text(
+                                text = when (currentTab) {
+                                    "ACTIVE" -> "Search active notes..."
+                                    "ARCHIVED" -> "Search in vault..."
+                                    else -> "Search in trash..."
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        },
+                        leadingIcon = {
+                            CanvasCustomIcon(CanvasIconType.SEARCH, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    // Layout Action Button
+                    IconButton(
+                        onClick = { isGridView = !isGridView },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                    ) {
+                        AnimatedContent(targetState = isGridView, label = "LayoutToggle") { grid ->
+                            CanvasCustomIcon(
+                                type = if (grid) CanvasIconType.GRID_OFF else CanvasIconType.GRID_ON,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                    },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { state -> 
-                            if (state.isFocused) isSearchActive = true 
-                            else if (searchQuery.isEmpty()) isSearchActive = false 
-                        }
-                )
+                    }
+
+                    // Sort & Filter Action Button
+                    IconButton(
+                        onClick = { showSortBottomSheet = true },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                    ) {
+                        CanvasFilterSortIcon(modifier = Modifier.size(24.dp))
+                    }
+                }
             }
         },
         bottomBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 20.dp)
-                    .clip(RoundedCornerShape(32.dp))
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(32.dp)
-                    )
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+            AnimatedVisibility(
+                visible = isBottomBarVisible,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
-                NavigationBar(
-                    containerColor = Color.Transparent,
-                    tonalElevation = 0.dp,
-                    windowInsets = WindowInsets(0, 0, 0, 0),
-                    modifier = Modifier.height(72.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .clip(RoundedCornerShape(32.dp))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(32.dp)
+                        )
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f)) // gorgeous iOS glassy bubble dock
                 ) {
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.StickyNote2, contentDescription = "Active Notes") },
-                        label = { Text("Active", fontWeight = FontWeight.Bold) },
-                        selected = currentTab == "ACTIVE",
-                        onClick = { currentTab = "ACTIVE" },
-                        alwaysShowLabel = false,
-                        colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    NavigationBar(
+                        containerColor = Color.Transparent,
+                        tonalElevation = 0.dp,
+                        windowInsets = WindowInsets(0, 0, 0, 0),
+                        modifier = Modifier.height(64.dp)
+                    ) {
+                        NavigationBarItem(
+                            icon = { CanvasActiveTabIcon(isSelected = currentTab == "ACTIVE") },
+                            label = { Text("Active", fontWeight = FontWeight.Bold) },
+                            selected = currentTab == "ACTIVE",
+                            onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                            alwaysShowLabel = false,
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
                         )
-                    )
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Archive, contentDescription = "Archived Notes") },
-                        label = { Text("Archive", fontWeight = FontWeight.Bold) },
-                        selected = currentTab == "ARCHIVED",
-                        onClick = { currentTab = "ARCHIVED" },
-                        alwaysShowLabel = false,
-                        colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.secondary,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        NavigationBarItem(
+                            icon = { CanvasArchiveTabIcon(isSelected = currentTab == "ARCHIVED") },
+                            label = { Text("Archive", fontWeight = FontWeight.Bold) },
+                            selected = currentTab == "ARCHIVED",
+                            onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                            alwaysShowLabel = false,
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+                                selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.secondary,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
                         )
-                    )
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Default.Delete, contentDescription = "Trashed Notes") },
-                        label = { Text("Trash", fontWeight = FontWeight.Bold) },
-                        selected = currentTab == "TRASHED",
-                        onClick = { currentTab = "TRASHED" },
-                        alwaysShowLabel = false,
-                        colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.errorContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onErrorContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.error,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        NavigationBarItem(
+                            icon = { CanvasTrashTabIcon(isSelected = currentTab == "TRASHED") },
+                            label = { Text("Trash", fontWeight = FontWeight.Bold) },
+                            selected = currentTab == "TRASHED",
+                            onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            alwaysShowLabel = false,
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = MaterialTheme.colorScheme.errorContainer,
+                                selectedIconColor = MaterialTheme.colorScheme.onErrorContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.error,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
                         )
-                    )
+                    }
                 }
             }
         },
         floatingActionButton = {
-            if (currentTab == "ACTIVE") {
-                ExtendedFloatingActionButton(
-                    text = { 
-                        Text(
-                            text = "New Note",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                        ) 
-                    },
-                    icon = { 
-                        Icon(
-                            imageVector = Icons.Default.Create,
-                            contentDescription = "Add New Note"
-                        ) 
-                    },
-                    onClick = onNavigateToAddNote,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shape = RoundedCornerShape(20.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 2.dp,
-                        hoveredElevation = 8.dp
-                    ),
-                    modifier = Modifier.padding(bottom = 0.dp, end = 0.dp)
-                )
-            } else if (currentTab == "TRASHED" && notes.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    text = { 
-                        Text(
-                            text = "Empty",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                        ) 
-                    },
-                    icon = { 
-                        Icon(
-                            imageVector = Icons.Default.DeleteForever,
-                            contentDescription = "Empty Trash"
-                        ) 
-                    },
-                    onClick = { viewModel.emptyTrash() },
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = RoundedCornerShape(20.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 2.dp
-                    ),
-                    modifier = Modifier.padding(bottom = 0.dp, end = 0.dp)
-                )
+            AnimatedVisibility(
+                visible = isBottomBarVisible,
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
+            ) {
+                if (currentTab == "ACTIVE") {
+                    ExtendedFloatingActionButton(
+                        text = { 
+                            Text(
+                                text = "New Note",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            ) 
+                        },
+                        icon = { 
+                            CanvasCustomIcon(
+                                type = CanvasIconType.EDIT
+                            ) 
+                        },
+                        onClick = onNavigateToAddNote,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        shape = RoundedCornerShape(20.dp),
+                        elevation = FloatingActionButtonDefaults.elevation(
+                            defaultElevation = 6.dp,
+                            pressedElevation = 2.dp,
+                            hoveredElevation = 8.dp
+                        ),
+                        modifier = Modifier.padding(bottom = 0.dp, end = 0.dp)
+                    )
+                } else if (currentTab == "TRASHED" && notes.isNotEmpty()) {
+                    ExtendedFloatingActionButton(
+                        text = { 
+                            Text(
+                                text = "Empty",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            ) 
+                        },
+                        icon = { 
+                            CanvasCustomIcon(
+                                type = CanvasIconType.DELETE
+                            ) 
+                        },
+                        onClick = { viewModel.emptyTrash() },
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        shape = RoundedCornerShape(20.dp),
+                        elevation = FloatingActionButtonDefaults.elevation(
+                            defaultElevation = 6.dp,
+                            pressedElevation = 2.dp
+                        ),
+                        modifier = Modifier.padding(bottom = 0.dp, end = 0.dp)
+                    )
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -501,6 +979,7 @@ fun NotesListScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .nestedScroll(nestedScrollConnection)
                 .padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
         ) {
             // Dynamic Tag / Category filter carousel
@@ -519,9 +998,8 @@ fun NotesListScreen(
                         onClick = { selectedTag = null },
                         label = { Text("All Notes", fontWeight = if (isAllNotes) FontWeight.ExtraBold else FontWeight.SemiBold) },
                         leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Notes,
-                                contentDescription = null,
+                            CanvasCustomIcon(
+                                type = CanvasIconType.MENU_BOOK,
                                 modifier = Modifier.size(16.dp)
                             )
                         },
@@ -548,9 +1026,8 @@ fun NotesListScreen(
                             label = { Text(tag, fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold) },
                             leadingIcon = {
                                 AnimatedContent(targetState = isSelected, label = "TagIcon") { selected ->
-                                    Icon(
-                                        imageVector = if (selected) Icons.Default.Check else Icons.Default.Label,
-                                        contentDescription = null,
+                                    CanvasCustomIcon(
+                                        type = if (selected) CanvasIconType.TICK else CanvasIconType.LABEL,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -573,304 +1050,445 @@ fun NotesListScreen(
                 }
             }
 
-            // Cards Grid or List
-            if (filteredAndSortedNotes.isEmpty()) {
+            // Cards Swipable Pager (HorizontalPager)
+            HorizontalPager(
+                state = pagerState,
+                userScrollEnabled = true,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) { page ->
+                val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction)
+                val absoluteOffset = if (pageOffset < 0f) -pageOffset else pageOffset
+                val scale = 1f - (absoluteOffset * 0.08f).coerceIn(0f, 0.08f)
+                val alpha = 1f - (absoluteOffset * 0.35f).coerceIn(0f, 0.35f)
+                val translationX = pageOffset * 60f
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(96.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (searchQuery.isNotBlank() || selectedTag != null || filterPinnedOnly) Icons.Default.SearchOff else Icons.Default.NoteAlt,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(48.dp)
-                            )
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            this.alpha = alpha
+                            this.translationX = translationX
                         }
+                ) {
+                    val pageNotes = when (page) {
+                        0 -> activeNotes
+                        1 -> archivedNotes
+                        else -> trashedNotes
+                    }
 
-                        Text(
-                            text = if (searchQuery.isNotBlank() || selectedTag != null || filterPinnedOnly) {
+                // Filter AND Sort notes dynamically per page
+                val pageFilteredAndSortedNotes = remember(pageNotes, selectedTag, searchQuery, sortBy, filterPinnedOnly) {
+                    var list = pageNotes
+
+                    // 1. Filter by tag (Only apply to Active and Archived tabs, ignore for Trash)
+                    if (selectedTag != null && page != 2) {
+                        list = list.filter { note ->
+                            note.tags.split(",")
+                                .map { it.trim() }
+                                .contains(selectedTag)
+                        }
+                    }
+
+                    // 2. Filter by search box
+                    if (searchQuery.isNotBlank()) {
+                        val q = searchQuery.trim().lowercase()
+                        list = list.filter { note ->
+                            note.title.lowercase().contains(q) || note.content.lowercase().contains(q)
+                        }
+                    }
+
+                    // 3. Filter by Pinned only (Only apply to Active and Archived tabs, ignore for Trash)
+                    if (filterPinnedOnly && page != 2) {
+                        list = list.filter { it.isPinned }
+                    }
+
+                    // 4. Sort notes list
+                    list = when (sortBy) {
+                        "oldest" -> list.sortedBy { it.timestamp }
+                        "a-z" -> list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title.ifBlank { "zzz" } })
+                        "z-a" -> list.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.title.ifBlank { "aaa" } })
+                        "color" -> list.sortedBy { it.colorHex ?: "" }
+                        "pin" -> list.sortedByDescending { it.isPinned }
+                        else -> list.sortedByDescending { it.timestamp } // "newest"
+                    }
+
+                    // Keep pinned notes always at the top by default unless custom alphabetical sorts are activated
+                    if (sortBy != "oldest" && sortBy != "a-z" && sortBy != "z-a") {
+                        list = list.sortedByDescending { it.isPinned }
+                    }
+
+                    list
+                }
+
+                if (pageFilteredAndSortedNotes.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.padding(24.dp)
+                        ) {
+                            val isSearchOrFilter = searchQuery.isNotBlank() || selectedTag != null || filterPinnedOnly
+                            val tabType = when (page) {
+                                0 -> "ACTIVE"
+                                1 -> "ARCHIVED"
+                                else -> "TRASHED"
+                            }
+                            BeautifulEmptyStateGraphic(
+                                isSearchOrFilter = isSearchOrFilter,
+                                tabType = tabType,
+                                primaryColor = MaterialTheme.colorScheme.primary,
+                                secondaryColor = MaterialTheme.colorScheme.tertiary
+                            )
+
+                            val emptyTitle = if (isSearchOrFilter) {
                                 "No notes match your filters"
                             } else {
-                                "Your workspace is pristine.\nTap the button to write down your thoughts!"
-                            },
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                lineHeight = 24.sp,
-                                textAlign = TextAlign.Center
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
-                        )
+                                when (page) {
+                                    0 -> "Your workspace is pristine"
+                                    1 -> "Archive Vault is empty"
+                                    else -> "Trash is clean"
+                                }
+                            }
 
-                        if (searchQuery.isNotBlank() || selectedTag != null || filterPinnedOnly) {
-                            Button(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedTag = null
-                                    filterPinnedOnly = false
-                                },
-                                shape = RoundedCornerShape(20.dp)
-                            ) {
-                                Text("Reset Filters")
+                            val emptyDesc = if (isSearchOrFilter) {
+                                "Try adjusting your search query or reset filters."
+                            } else {
+                                when (page) {
+                                    0 -> "Tap the button below to write down your thoughts, voice notes, and more!"
+                                    1 -> "Archive notes you want to keep secure but out of your main workspace."
+                                    else -> "Notes you delete will stay here for safekeeping. Tap 'Empty' to permanently delete them."
+                                }
+                            }
+
+                            Text(
+                                text = emptyTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Text(
+                                text = emptyDesc,
+                                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+
+                            if (isSearchOrFilter) {
+                                Button(
+                                    onClick = {
+                                        searchQuery = ""
+                                        selectedTag = null
+                                        filterPinnedOnly = false
+                                    },
+                                    shape = RoundedCornerShape(20.dp)
+                                ) {
+                                    Text("Reset Filters")
+                                }
+                            } else if (page == 0) {
+                                Button(
+                                    onClick = onNavigateToAddNote,
+                                    shape = RoundedCornerShape(20.dp)
+                                ) {
+                                    Text("Create Note")
+                                }
                             }
                         }
                     }
-                }
-            } else {
-                if (isGridView) {
-                    LazyVerticalStaggeredGrid(
-                        columns = StaggeredGridCells.Adaptive(minSize = 165.dp),
-                        contentPadding = PaddingValues(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalItemSpacing = 16.dp,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .weight(1f)
-                    ) {
-                        itemsIndexed(filteredAndSortedNotes, key = { _, note -> note.id }) { index, note ->
-                            NoteCard(
-                                note = note,
-                                searchQuery = searchQuery,
-                                onClick = { 
-                                    if (note.isLocked) {
-                                        noteToUnlock = note
-                                        unlockPin = ""
-                                        unlockError = false
-                                        unlockActionType = "edit"
-                                    } else {
-                                        onNavigateToEditNote(note.id)
-                                    }
-                                },
-                                onLongClick = { 
-                                    if (note.isLocked) {
-                                        noteToUnlock = note
-                                        unlockPin = ""
-                                        unlockError = false
-                                        unlockActionType = "quick_actions"
-                                    } else {
-                                        showQuickActionsForNote = note 
-                                    }
-                                },
-                                onDoubleTap = { 
-                                    if (note.isLocked) {
-                                        noteToUnlock = note
-                                        unlockPin = ""
-                                        unlockError = false
-                                        unlockActionType = "toggle_pin"
-                                    } else {
-                                        viewModel.togglePin(note) 
-                                    }
-                                },
-                                modifier = Modifier.animateItem(
-                                    fadeInSpec = tween(500), 
-                                    fadeOutSpec = tween(500), 
-                                    placementSpec = tween(500, easing = FastOutSlowInEasing)
-                                )
-                            )
-                        }
-                    }
                 } else {
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .weight(1f)
-                    ) {
-                        itemsIndexed(filteredAndSortedNotes, key = { _, note -> note.id }) { index, note ->
-                            val dismissState = rememberSwipeToDismissBoxState(
-                                confirmValueChange = { dismissValue ->
-                                    if (dismissValue == SwipeToDismissBoxValue.EndToStart || dismissValue == SwipeToDismissBoxValue.StartToEnd) {
+                    if (isGridView) {
+                        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                        val screenWidthDp = configuration.screenWidthDp
+                        val gridColumns = when {
+                            screenWidthDp < 360 -> StaggeredGridCells.Fixed(1)
+                            screenWidthDp < 600 -> StaggeredGridCells.Fixed(2)
+                            screenWidthDp < 900 -> StaggeredGridCells.Fixed(3)
+                            else -> StaggeredGridCells.Fixed(4)
+                        }
+                        val gridContentPadding = when {
+                            screenWidthDp < 360 -> PaddingValues(top = 12.dp, bottom = 100.dp, start = 12.dp, end = 12.dp)
+                            else -> PaddingValues(top = 16.dp, bottom = 100.dp, start = 16.dp, end = 16.dp)
+                        }
+                        val gridSpacing = if (screenWidthDp < 360) 12.dp else 16.dp
+
+                        LazyVerticalStaggeredGrid(
+                            columns = gridColumns,
+                            state = when (page) {
+                                0 -> gridState0
+                                1 -> gridState1
+                                else -> gridState2
+                            },
+                            contentPadding = gridContentPadding,
+                            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                            verticalItemSpacing = gridSpacing,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            itemsIndexed(pageFilteredAndSortedNotes, key = { _, note -> note.id }) { index, note ->
+                                NoteCard(
+                                    note = note,
+                                    searchQuery = searchQuery,
+                                    onClick = { 
                                         if (note.isLocked) {
                                             noteToUnlock = note
                                             unlockPin = ""
                                             unlockError = false
-                                            unlockActionType = if (dismissValue == SwipeToDismissBoxValue.EndToStart) "delete" else "restore"
-                                            return@rememberSwipeToDismissBoxState false
+                                            unlockActionType = "edit"
+                                        } else {
+                                            onNavigateToEditNote(note.id)
                                         }
+                                    },
+                                    onLongClick = { 
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (note.isLocked) {
+                                            noteToUnlock = note
+                                            unlockPin = ""
+                                            unlockError = false
+                                            unlockActionType = "quick_actions"
+                                        } else {
+                                            showQuickActionsForNote = note 
+                                        }
+                                    },
+                                    onDoubleTap = { 
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (note.isLocked) {
+                                            noteToUnlock = note
+                                            unlockPin = ""
+                                            unlockError = false
+                                            unlockActionType = "toggle_pin"
+                                        } else {
+                                            viewModel.togglePin(note) 
+                                        }
+                                    },
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = tween(500), 
+                                        fadeOutSpec = tween(500), 
+                                        placementSpec = tween(500, easing = FastOutSlowInEasing)
+                                    )
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            state = when (page) {
+                                0 -> listState0
+                                1 -> listState1
+                                else -> listState2
+                            },
+                            contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp, start = 16.dp, end = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            itemsIndexed(pageFilteredAndSortedNotes, key = { _, note -> note.id }) { index, note ->
+                                val dismissState = rememberSwipeToDismissBoxState(
+                                    confirmValueChange = { dismissValue ->
+                                        dismissValue == SwipeToDismissBoxValue.EndToStart || dismissValue == SwipeToDismissBoxValue.StartToEnd
+                                    }
+                                )
 
-                                        when (currentTab) {
-                                            "TRASHED" -> {
-                                                if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
-                                                    viewModel.deleteNotePermanent(note)
-                                                } else {
+                                var showDeleteDialogLocal by remember { mutableStateOf(false) }
+
+                                LaunchedEffect(dismissState.currentValue) {
+                                    val currentVal = dismissState.currentValue
+                                    if (currentVal == SwipeToDismissBoxValue.EndToStart) {
+                                        if (note.isLocked) {
+                                            noteToUnlock = note
+                                            unlockPin = ""
+                                            unlockError = false
+                                            unlockActionType = "delete"
+                                            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+                                        } else {
+                                            when (currentTab) {
+                                                "TRASHED" -> {
+                                                    showDeleteDialogLocal = true
+                                                }
+                                                "ARCHIVED" -> {
+                                                    viewModel.moveToTrash(note)
+                                                }
+                                                else -> { // ACTIVE
+                                                     viewModel.moveToTrash(note)
+                                                }
+                                            }
+                                        }
+                                    } else if (currentVal == SwipeToDismissBoxValue.StartToEnd) {
+                                        if (note.isLocked) {
+                                            noteToUnlock = note
+                                            unlockPin = ""
+                                            unlockError = false
+                                            unlockActionType = "restore"
+                                            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+                                        } else {
+                                            when (currentTab) {
+                                                "TRASHED" -> {
                                                     viewModel.restoreFromTrash(note)
-                                                    scope.launch {
-                                                        snackbarHostState.showSnackbar("Note restored from Trash")
-                                                    }
                                                 }
-                                            }
-                                            "ARCHIVED" -> {
-                                                if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
-                                                    viewModel.moveToTrash(note)
-                                                    scope.launch {
-                                                        val result = snackbarHostState.showSnackbar(
-                                                            message = "Archived to Trash",
-                                                            actionLabel = "UNDO",
-                                                            duration = SnackbarDuration.Short
-                                                        )
-                                                        if (result == SnackbarResult.ActionPerformed) {
-                                                            viewModel.restoreFromTrash(note)
-                                                        }
-                                                    }
-                                                } else {
+                                                "ARCHIVED" -> {
                                                     viewModel.unarchiveNote(note)
-                                                    scope.launch {
-                                                        snackbarHostState.showSnackbar("Note unarchived")
-                                                    }
                                                 }
-                                            }
-                                            else -> { // ACTIVE
-                                                if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
-                                                    viewModel.moveToTrash(note)
-                                                    scope.launch {
-                                                        val result = snackbarHostState.showSnackbar(
-                                                            message = "Moved to Trash",
-                                                            actionLabel = "UNDO",
-                                                            duration = SnackbarDuration.Short
-                                                        )
-                                                        if (result == SnackbarResult.ActionPerformed) {
-                                                            viewModel.restoreFromTrash(note)
-                                                        }
-                                                    }
-                                                } else {
+                                                else -> { // ACTIVE
                                                     viewModel.archiveNote(note)
-                                                    scope.launch {
-                                                        val result = snackbarHostState.showSnackbar(
-                                                            message = "Note Archived",
-                                                            actionLabel = "UNDO",
-                                                            duration = SnackbarDuration.Short
-                                                        )
-                                                        if (result == SnackbarResult.ActionPerformed) {
-                                                            viewModel.unarchiveNote(note)
-                                                        }
-                                                    }
                                                 }
                                             }
                                         }
-                                        true
-                                    } else {
-                                        false
                                     }
                                 }
-                            )
 
-                            SwipeToDismissBox(
-                                state = dismissState,
-                                modifier = Modifier.animateItem(
-                                    fadeInSpec = tween(500), 
-                                    fadeOutSpec = tween(500), 
-                                    placementSpec = tween(500, easing = FastOutSlowInEasing)
-                                ),
-                                backgroundContent = {
-                                    val activeDirection = if (dismissState.targetValue != SwipeToDismissBoxValue.Settled) {
-                                        dismissState.targetValue
-                                    } else {
-                                        dismissState.dismissDirection
-                                    }
-                                    
-                                    val color by animateColorAsState(
-                                        when (dismissState.targetValue) {
-                                            SwipeToDismissBoxValue.Settled -> Color.Transparent
-                                            SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
+                                if (showDeleteDialogLocal) {
+                                    AlertDialog(
+                                        onDismissRequest = {
+                                            showDeleteDialogLocal = false
+                                            scope.launch {
+                                                dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+                                            }
+                                        },
+                                        title = { Text(text = stringResource(R.string.delete_permanent_title)) },
+                                        text = { Text(text = stringResource(R.string.delete_permanent_msg)) },
+                                        confirmButton = {
+                                            TextButton(
+                                                onClick = {
+                                                    viewModel.deleteNotePermanent(note)
+                                                    showDeleteDialogLocal = false
+                                                    showCustomSnackbar(
+                                                        title = "Deleted Permanently",
+                                                        message = note.title.ifBlank { "Untitled Note" },
+                                                        type = SnackbarType.ERROR,
+                                                        actionLabel = "UNDO",
+                                                        onAction = {
+                                                            viewModel.updateNote(note)
+                                                        }
+                                                    )
+                                                }
+                                            ) {
+                                                Text(text = stringResource(R.string.delete_permanent_confirm), color = MaterialTheme.colorScheme.error)
+                                            }
+                                        },
+                                        dismissButton = {
+                                            TextButton(onClick = {
+                                                showDeleteDialogLocal = false
+                                                scope.launch {
+                                                    dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+                                                }
+                                            }) {
+                                                Text(text = stringResource(R.string.delete_permanent_cancel))
+                                            }
+                                        }
+                                    )
+                                }
+
+                                SwipeToDismissBox(
+                                    state = dismissState,
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = tween(500), 
+                                        fadeOutSpec = tween(500), 
+                                        placementSpec = tween(500, easing = FastOutSlowInEasing)
+                                    ),
+                                    backgroundContent = {
+                                        val activeDirection = if (dismissState.targetValue != SwipeToDismissBoxValue.Settled) {
+                                            dismissState.targetValue
+                                        } else {
+                                            dismissState.dismissDirection
+                                        }
+                                        
+                                        val color by animateColorAsState(
+                                            when (dismissState.targetValue) {
+                                                SwipeToDismissBoxValue.Settled -> Color.Transparent
+                                                SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
+                                                SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
+                                                    "TRASHED" -> MaterialTheme.colorScheme.primaryContainer
+                                                    "ARCHIVED" -> MaterialTheme.colorScheme.secondaryContainer
+                                                    else -> MaterialTheme.colorScheme.tertiaryContainer
+                                                }
+                                            }
+                                        )
+                                        val alignment = when (activeDirection) {
+                                            SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+                                            SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+                                            else -> Alignment.CenterStart
+                                        }
+                                        val iconType = when (activeDirection) {
                                             SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
-                                                "TRASHED" -> MaterialTheme.colorScheme.primaryContainer
-                                                "ARCHIVED" -> MaterialTheme.colorScheme.secondaryContainer
-                                                else -> MaterialTheme.colorScheme.tertiaryContainer
+                                                "TRASHED" -> CanvasIconType.UNARCHIVE
+                                                "ARCHIVED" -> CanvasIconType.UNARCHIVE
+                                                else -> CanvasIconType.ARCHIVE
                                             }
+                                            else -> CanvasIconType.DELETE
                                         }
-                                    )
-                                    val alignment = when (activeDirection) {
-                                        SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
-                                        SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
-                                        else -> Alignment.CenterStart
-                                    }
-                                    val icon = when (activeDirection) {
-                                        SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
-                                            "TRASHED" -> Icons.Default.Restore
-                                            "ARCHIVED" -> Icons.Default.Unarchive
-                                            else -> Icons.Default.Archive
+                                        val iconTint = when (activeDirection) {
+                                            SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
+                                                "TRASHED" -> MaterialTheme.colorScheme.onPrimaryContainer
+                                                "ARCHIVED" -> MaterialTheme.colorScheme.onSecondaryContainer
+                                                else -> MaterialTheme.colorScheme.onTertiaryContainer
+                                            }
+                                            else -> MaterialTheme.colorScheme.onErrorContainer
                                         }
-                                        else -> Icons.Default.Delete
-                                    }
-                                    val iconTint = when (activeDirection) {
-                                        SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
-                                            "TRASHED" -> MaterialTheme.colorScheme.onPrimaryContainer
-                                            "ARCHIVED" -> MaterialTheme.colorScheme.onSecondaryContainer
-                                            else -> MaterialTheme.colorScheme.onTertiaryContainer
-                                        }
-                                        else -> MaterialTheme.colorScheme.onErrorContainer
-                                    }
 
-                                    Box(
-                                        Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .background(color)
-                                            .padding(horizontal = 20.dp),
-                                        contentAlignment = alignment
-                                    ) {
-                                        if (activeDirection != SwipeToDismissBoxValue.Settled) {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = "Swipe Action",
-                                                tint = iconTint
-                                            )
+                                        Box(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(20.dp))
+                                                .background(color)
+                                                .padding(horizontal = 20.dp),
+                                            contentAlignment = alignment
+                                        ) {
+                                            if (activeDirection != SwipeToDismissBoxValue.Settled) {
+                                                CanvasCustomIcon(
+                                                    type = iconType,
+                                                    tint = iconTint
+                                                )
+                                            }
                                         }
+                                    },
+                                    content = {
+                                        NoteCard(
+                                            note = note,
+                                            searchQuery = searchQuery,
+                                            onClick = { 
+                                                if (note.isLocked) {
+                                                    noteToUnlock = note
+                                                    unlockPin = ""
+                                                    unlockError = false
+                                                    unlockActionType = "edit"
+                                                } else {
+                                                    onNavigateToEditNote(note.id)
+                                                }
+                                            },
+                                            onLongClick = { 
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                if (note.isLocked) {
+                                                    noteToUnlock = note
+                                                    unlockPin = ""
+                                                    unlockError = false
+                                                    unlockActionType = "quick_actions"
+                                                } else {
+                                                    showQuickActionsForNote = note 
+                                                }
+                                            },
+                                            onDoubleTap = { 
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                if (note.isLocked) {
+                                                    noteToUnlock = note
+                                                    unlockPin = ""
+                                                    unlockError = false
+                                                    unlockActionType = "toggle_pin"
+                                                } else {
+                                                    viewModel.togglePin(note) 
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
                                     }
-                                },
-                                content = {
-                                    NoteCard(
-                                        note = note,
-                                        searchQuery = searchQuery,
-                                        onClick = { 
-                                            if (note.isLocked) {
-                                                noteToUnlock = note
-                                                unlockPin = ""
-                                                unlockError = false
-                                                unlockActionType = "edit"
-                                            } else {
-                                                onNavigateToEditNote(note.id)
-                                            }
-                                        },
-                                        onLongClick = { 
-                                            if (note.isLocked) {
-                                                noteToUnlock = note
-                                                unlockPin = ""
-                                                unlockError = false
-                                                unlockActionType = "quick_actions"
-                                            } else {
-                                                showQuickActionsForNote = note 
-                                            }
-                                        },
-                                        onDoubleTap = { 
-                                            if (note.isLocked) {
-                                                noteToUnlock = note
-                                                unlockPin = ""
-                                                unlockError = false
-                                                unlockActionType = "toggle_pin"
-                                            } else {
-                                                viewModel.togglePin(note) 
-                                            }
-                                        }
-                                    )
-                                }
-                            )
+                                )
+                            }
                         }
                     }
+                }
                 }
             }
         }
@@ -890,27 +1508,48 @@ fun NotesListScreen(
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Header Bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Sort & Filters",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    IconButton(onClick = { showSortBottomSheet = false }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        }
+                        Text(
+                            text = "Sort & Filters",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(
+                        onClick = { showSortBottomSheet = false },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                    ) {
+                         CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
                     }
                 }
 
                 Text(
-                    "Sorting Mode",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "SORT BY",
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.primary
                 )
 
                 // Grid/Flow of elegant Sort Options
@@ -932,15 +1571,15 @@ fun NotesListScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                                     else Color.Transparent
-                                        )
+                                )
                                 .border(
-                                    width = 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(12.dp)
+                                    width = 1.2.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(14.dp)
                                 )
                                 .clickable { sortBy = optionKey }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -954,9 +1593,9 @@ fun NotesListScreen(
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                             if (isSelected) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = "Selected",
+                                CanvasCustomIcon(
+                                    type = CanvasIconType.TICK,
+                                    modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -964,13 +1603,13 @@ fun NotesListScreen(
                     }
                 }
 
-                Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+                Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
 
                 Text(
-                    "Advanced Filters",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "FILTER OPTIONS",
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.primary
                 )
 
                 Row(
@@ -980,29 +1619,30 @@ fun NotesListScreen(
                     FilterChip(
                         selected = filterPinnedOnly,
                         onClick = { filterPinnedOnly = !filterPinnedOnly },
-                        label = { Text("Pinned Only") },
+                        label = { Text("Pinned Only", fontWeight = FontWeight.Bold) },
                         leadingIcon = {
-                            Icon(
-                                imageVector = if (filterPinnedOnly) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                            CanvasCustomIcon(
+                                type = if (filterPinnedOnly) CanvasIconType.PIN else CanvasIconType.UNPIN,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (filterPinnedOnly) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.secondary
                             )
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.secondary,
                             selectedLabelColor = MaterialTheme.colorScheme.onSecondary
                         ),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.height(40.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Button(
                     onClick = { showSortBottomSheet = false },
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
-                    Text("Apply Configuration")
+                    Text("Apply Configuration", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1025,45 +1665,95 @@ fun NotesListScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
+                // Header Row
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Text("Customize Note", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedTextField(
-                    value = quickTitle,
-                    onValueChange = { quickTitle = it },
-                    label = { Text("Quick Edit Title") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Pin note to top", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    Switch(checked = quickPinned, onCheckedChange = { quickPinned = it })
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        }
+                        Text("Customize Note", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                    }
+                    IconButton(
+                        onClick = { showQuickActionsForNote = null },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                    ) {
+                        CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                    }
                 }
 
+                // Title and Pin State Card Section
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = quickTitle,
+                            onValueChange = { quickTitle = it },
+                            label = { Text("Note Title") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CanvasCustomIcon(
+                                    type = if (quickPinned) CanvasIconType.PIN else CanvasIconType.UNPIN,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text("Pin note to top", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                            }
+                            Switch(checked = quickPinned, onCheckedChange = { quickPinned = it })
+                        }
+                    }
+                }
+
+                // Reordering Section (if visible)
                 val currentIndex = filteredAndSortedNotes.indexOfFirst { it.id == note.id }
                 if (currentIndex != -1) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Manual Reordering", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("MANUAL REORDERING", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                             FilledTonalButton(
                                 onClick = { moveNoteUp(currentIndex, filteredAndSortedNotes); showQuickActionsForNote = null },
@@ -1071,9 +1761,9 @@ fun NotesListScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.ArrowUpward, contentDescription = "Move Up", modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Move Up", fontSize = 12.sp)
+                                CanvasCustomIcon(CanvasIconType.ARROW_UP, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Move Up", fontWeight = FontWeight.Bold)
                             }
                             FilledTonalButton(
                                 onClick = { moveNoteDown(currentIndex, filteredAndSortedNotes); showQuickActionsForNote = null },
@@ -1081,19 +1771,22 @@ fun NotesListScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.ArrowDownward, contentDescription = "Move Down", modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Move Down", fontSize = 12.sp)
+                                CanvasCustomIcon(CanvasIconType.ARROW_DOWN, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Move Down", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
 
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Change Vibe accent", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Change Vibe Accent color bar
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("VIBE ACCENT COLOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     val quickColors = listOf(null, "#E6E3FF", "#2D26A0", "#FFF0CC", "#9A5500", "#FFD6EC", "#8B2060")
                     Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1101,24 +1794,34 @@ fun NotesListScreen(
                             val colorBg = colorHex?.let { Color(android.graphics.Color.parseColor(it)) } ?: MaterialTheme.colorScheme.surfaceVariant
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(40.dp)
                                     .clip(CircleShape)
                                     .background(colorBg)
-                                    .border(width = if (quickColor == colorHex) 2.5.dp else 1.dp, color = if (quickColor == colorHex) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.35f), shape = CircleShape)
+                                    .border(
+                                        width = if (quickColor == colorHex) 2.5.dp else 1.dp,
+                                        color = if (quickColor == colorHex) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
+                                        shape = CircleShape
+                                    )
                                     .clickable { quickColor = colorHex },
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (quickColor == colorHex) {
-                                    Icon(Icons.Default.Check, contentDescription = "Selected", tint = if (colorHex == "#E6E3FF" || colorHex == "#FFF0CC" || colorHex == "#FFD6EC" || colorHex == null) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(16.dp))
+                                    CanvasCustomIcon(
+                                        type = CanvasIconType.TICK,
+                                        tint = if (colorHex == "#E6E3FF" || colorHex == "#FFF0CC" || colorHex == "#FFD6EC" || colorHex == null) MaterialTheme.colorScheme.primary else Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
                             }
                         }
                     }
                 }
 
+                // Footer Quick Badges & Save Trigger
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
                         onClick = {
@@ -1131,51 +1834,102 @@ fun NotesListScreen(
                             context.startActivity(shareIntent)
                             showQuickActionsForNote = null
                         },
-                        modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.tertiaryContainer)
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.tertiaryContainer)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                        CanvasCustomIcon(CanvasIconType.SHARE, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(20.dp))
                     }
 
                     IconButton(
                         onClick = {
-                            if (currentTab == "TRASHED") { viewModel.deleteNotePermanent(note) } else { viewModel.moveToTrash(note) }
-                            showQuickActionsForNote = null
-                            scope.launch {
-                                if (currentTab != "TRASHED") {
-                                    val result = snackbarHostState.showSnackbar(message = "Moved to trash", actionLabel = "UNDO", duration = SnackbarDuration.Short)
-                                    if (result == SnackbarResult.ActionPerformed) { viewModel.restoreFromTrash(note) }
-                                }
+                            if (currentTab == "TRASHED") {
+                                noteToDeletePermanently = note
+                            } else {
+                                viewModel.moveToTrash(note)
                             }
+                            showQuickActionsForNote = null
                         },
-                        modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.errorContainer)
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.errorContainer)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.onErrorContainer)
+                        CanvasCustomIcon(CanvasIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                     }
 
                     if (currentTab != "ARCHIVED" && currentTab != "TRASHED") {
                         IconButton(
                             onClick = { viewModel.archiveNote(note); showQuickActionsForNote = null },
-                            modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer)
-                        ) { Icon(Icons.Default.Archive, contentDescription = "Archive", tint = MaterialTheme.colorScheme.onSecondaryContainer) }
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            CanvasCustomIcon(CanvasIconType.ARCHIVE, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                        }
                     } else if (currentTab == "ARCHIVED") {
                         IconButton(
                             onClick = { viewModel.unarchiveNote(note); showQuickActionsForNote = null },
-                            modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer)
-                        ) { Icon(Icons.Default.Unarchive, contentDescription = "Unarchive", tint = MaterialTheme.colorScheme.onSecondaryContainer) }
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            CanvasCustomIcon(CanvasIconType.UNARCHIVE, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                        }
                     }
+                    
                     Spacer(modifier = Modifier.weight(1f))
+                    
                     Button(
                         onClick = {
                             viewModel.updateNote(note.copy(title = quickTitle, isPinned = quickPinned, colorHex = quickColor))
                             showQuickActionsForNote = null
                         },
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.height(48.dp)
                     ) {
-                        Text("Save Vibe")
+                        Text("Save Vibe", fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
+    }
+
+    if (noteToDeletePermanently != null) {
+        AlertDialog(
+            onDismissRequest = { noteToDeletePermanently = null },
+            title = { Text(text = stringResource(R.string.delete_permanent_title)) },
+            text = { Text(text = stringResource(R.string.delete_permanent_msg)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        noteToDeletePermanently?.let { note ->
+                            viewModel.deleteNotePermanent(note)
+                            showCustomSnackbar(
+                                title = "Deleted Permanently",
+                                message = note.title.ifBlank { "Untitled Note" },
+                                type = SnackbarType.ERROR,
+                                actionLabel = "UNDO",
+                                onAction = {
+                                    viewModel.updateNote(note)
+                                }
+                            )
+                        }
+                        noteToDeletePermanently = null
+                    }
+                ) {
+                    Text(text = stringResource(R.string.delete_permanent_confirm), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { noteToDeletePermanently = null }) {
+                    Text(text = stringResource(R.string.delete_permanent_cancel))
+                }
+            }
+        )
     }
 
     if (noteToUnlock != null) {
@@ -1189,42 +1943,70 @@ fun NotesListScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Note is Locked", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CanvasCustomIcon(CanvasIconType.LOCK, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                 }
-                Text("Enter the 4-digit PIN to open this note.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                
+                Text(
+                    text = "Decrypt Note",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Text(
+                    text = "Enter the 4-digit PIN to access this private note.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+
                 OutlinedTextField(
                     value = unlockPin,
                     onValueChange = { 
                         unlockPin = it.take(4) 
                         unlockError = false
                     },
-                    label = { Text("PIN") },
+                    label = { Text("4-Digit PIN") },
                     isError = unlockError,
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (unlockError) {
                     Text(
-                        "Incorrect PIN.",
+                        "Incorrect PIN. Please try again.",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(start = 16.dp)
                     )
                 }
+                
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    TextButton(onClick = { noteToUnlock = null }) {
+                    OutlinedButton(
+                        onClick = { noteToUnlock = null },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text("Cancel")
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
                             val pinString = noteToUnlock?.lockPin ?: ""
@@ -1238,19 +2020,9 @@ fun NotesListScreen(
                                     "toggle_pin" -> viewModel.togglePin(unlockedNote)
                                     "delete" -> {
                                         if (currentTab == "TRASHED") {
-                                            viewModel.deleteNotePermanent(unlockedNote)
+                                            noteToDeletePermanently = unlockedNote
                                         } else {
                                             viewModel.moveToTrash(unlockedNote)
-                                            scope.launch {
-                                                val result = snackbarHostState.showSnackbar(
-                                                    message = "Archived to Trash",
-                                                    actionLabel = "UNDO",
-                                                    duration = SnackbarDuration.Short
-                                                )
-                                                if (result == SnackbarResult.ActionPerformed) {
-                                                    viewModel.restoreFromTrash(unlockedNote)
-                                                }
-                                            }
                                         }
                                     }
                                     "restore" -> {
@@ -1265,19 +2037,199 @@ fun NotesListScreen(
                                 unlockError = true
                             }
                         },
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text("Unlock")
+                        Text("Decrypt")
                     }
                 }
             }
         }
     }
+
+    // --- Custom iOS-style Snackbar Overlay ---
+    AnimatedVisibility(
+        visible = snackbarVisible,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 80.dp, start = 16.dp, end = 16.dp)
+            .navigationBarsPadding(),
+        enter = slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        ) + fadeIn(),
+        exit = slideOutVertically(
+            targetOffsetY = { it },
+            animationSpec = tween(durationMillis = 300)
+        ) + fadeOut() + shrinkVertically()
+    ) {
+        customSnackbarData?.let { data ->
+            val iconContainerColor: Color
+            val iconTint: Color
+            val titleTextColor: Color
+            val progressBarColor: Color
+            val iconType: CanvasIconType
+
+            when (data.type) {
+                SnackbarType.ERROR -> {
+                    iconContainerColor = Color(0x26EF4444)
+                    iconTint = Color(0xFFF87171)
+                    titleTextColor = Color(0xFFFCA5A5)
+                    progressBarColor = Color(0xFFEF4444)
+                    iconType = CanvasIconType.DELETE
+                }
+                SnackbarType.SUCCESS -> {
+                    iconContainerColor = Color(0x2610B981)
+                    iconTint = Color(0xFF34D399)
+                    titleTextColor = Color(0xFF6EE7B7)
+                    progressBarColor = Color(0xFF10B981)
+                    iconType = CanvasIconType.TICK
+                }
+                SnackbarType.INFO -> {
+                    iconContainerColor = Color(0x263B82F6)
+                    iconTint = Color(0xFF60A5FA)
+                    titleTextColor = Color(0xFF93C5FD)
+                    progressBarColor = Color(0xFF3B82F6)
+                    iconType = CanvasIconType.TICK
+                }
+                SnackbarType.WARNING -> {
+                    iconContainerColor = Color(0x26F59E0B)
+                    iconTint = Color(0xFFFBBF24)
+                    titleTextColor = Color(0xFFFCD34D)
+                    progressBarColor = Color(0xFFF59E0B)
+                    iconType = CanvasIconType.TICK
+                }
+            }
+
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xEA1A1B20)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                border = BorderStroke(1.dp, Color(0x26FFFFFF)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 480.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(iconContainerColor),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CanvasCustomIcon(
+                                    type = iconType,
+                                    tint = iconTint,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.width(16.dp))
+                            
+                            Column {
+                                Text(
+                                    text = data.title,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = data.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            data.actionLabel?.let { actionLabel ->
+                                TextButton(
+                                    onClick = {
+                                        data.onAction?.invoke()
+                                        snackbarVisible = false
+                                        scope.launch {
+                                            kotlinx.coroutines.delay(300)
+                                            customSnackbarData = null
+                                        }
+                                    },
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = Color(0xFFFFB300)
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.heightIn(min = 40.dp)
+                                ) {
+                                    Text(
+                                        text = actionLabel,
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                            }
+                            
+                            IconButton(
+                                onClick = {
+                                    snackbarVisible = false
+                                    scope.launch {
+                                        kotlinx.coroutines.delay(300)
+                                        customSnackbarData = null
+                                    }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close Notification",
+                                    tint = Color.White.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(Color.White.copy(alpha = 0.1f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(animatableProgress.value)
+                                .height(3.dp)
+                                .background(progressBarColor)
+                        )
+                    }
+                }
+            }
+        }
+    }
+    } // closes Box
 }
 
 @Composable
 fun StatBadge(
-    icon: ImageVector,
+    iconType: CanvasIconType,
     label: String,
     value: String,
     color: Color
@@ -1291,9 +2243,8 @@ fun StatBadge(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
+            CanvasCustomIcon(
+                type = iconType,
                 tint = color,
                 modifier = Modifier.size(16.dp)
             )
@@ -1367,9 +2318,8 @@ fun NoteCard(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Locked Note",
+                    CanvasCustomIcon(
+                        type = CanvasIconType.LOCK,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(32.dp)
                     )
@@ -1414,13 +2364,10 @@ fun NoteCard(
                                 .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.PushPin,
-                                contentDescription = "Pinned Note Indicator Icon",
+                            CanvasCustomIcon(
+                                type = CanvasIconType.PIN,
                                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .rotate(45f)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -1462,22 +2409,22 @@ fun NoteCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (hasVoice) {
-                            IconBadge(icon = Icons.Default.Mic, desc = "Voice Recording Indicator", color = MaterialTheme.colorScheme.tertiary)
+                            IconBadge(type = CanvasIconType.MIC, desc = "Voice Recording Indicator", color = MaterialTheme.colorScheme.tertiary)
                         }
                         if (hasImage) {
-                            IconBadge(icon = Icons.Default.Image, desc = "Image Attachment Indicator", color = MaterialTheme.colorScheme.primary)
+                            IconBadge(type = CanvasIconType.IMAGE, desc = "Image Attachment Indicator", color = MaterialTheme.colorScheme.primary)
                         }
                         if (hasFile) {
-                            IconBadge(icon = Icons.Default.AttachFile, desc = "File Document Indicator", color = MaterialTheme.colorScheme.secondary)
+                            IconBadge(type = CanvasIconType.ATTACH_FILE, desc = "File Document Indicator", color = MaterialTheme.colorScheme.secondary)
                         }
                         if (hasChecklist) {
-                            IconBadge(icon = Icons.Default.CheckBox, desc = "Checklist Tasks Indicator", color = MaterialTheme.colorScheme.primary)
+                            IconBadge(type = CanvasIconType.CHECKBOX_ON, desc = "Checklist Tasks Indicator", color = MaterialTheme.colorScheme.primary)
                         }
                         if (hasTable) {
-                            IconBadge(icon = Icons.Default.GridOn, desc = "Table Block Indicator", color = MaterialTheme.colorScheme.tertiary)
+                            IconBadge(type = CanvasIconType.GRID_ON, desc = "Table Block Indicator", color = MaterialTheme.colorScheme.tertiary)
                         }
                         if (hasCode) {
-                            IconBadge(icon = Icons.Default.Code, desc = "Code Block Indicator", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            IconBadge(type = CanvasIconType.CODE, desc = "Code Block Indicator", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -1508,9 +2455,8 @@ fun NoteCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Label,
-                                        contentDescription = null,
+                                    CanvasCustomIcon(
+                                        type = CanvasIconType.LABEL,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(10.dp)
                                     )
@@ -1547,9 +2493,8 @@ fun NoteCard(
                         .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.MenuBook,
-                        contentDescription = null,
+                    CanvasCustomIcon(
+                        type = CanvasIconType.MENU_BOOK,
                         modifier = Modifier.size(12.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1565,7 +2510,7 @@ fun NoteCard(
 }
 
 @Composable
-fun IconBadge(icon: ImageVector, desc: String, color: Color) {
+fun IconBadge(type: CanvasIconType, desc: String, color: Color) {
     Box(
         modifier = Modifier
             .size(24.dp)
@@ -1573,11 +2518,273 @@ fun IconBadge(icon: ImageVector, desc: String, color: Color) {
             .background(color.copy(alpha = 0.12f)),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = desc,
+        CanvasCustomIcon(
+            type = type,
             tint = color,
             modifier = Modifier.size(12.dp)
+        )
+    }
+}
+
+@Composable
+fun CanvasPremiumGemIcon(modifier: Modifier = Modifier) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        
+        val pathLeft = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.5f, 0f)
+            lineTo(w * 0.15f, h * 0.35f)
+            lineTo(w * 0.5f, h)
+            close()
+        }
+        val pathRight = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.5f, 0f)
+            lineTo(w * 0.85f, h * 0.35f)
+            lineTo(w * 0.5f, h)
+            close()
+        }
+        val pathCenter = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.5f, 0f)
+            lineTo(w * 0.35f, h * 0.35f)
+            lineTo(w * 0.5f, h * 0.75f)
+            lineTo(w * 0.65f, h * 0.35f)
+            close()
+        }
+        
+        drawPath(
+            path = pathLeft,
+            brush = Brush.linearGradient(
+                colors = listOf(primaryColor.copy(alpha = 0.8f), primaryColor.copy(alpha = 0.4f)),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+        )
+        drawPath(
+            path = pathRight,
+            brush = Brush.linearGradient(
+                colors = listOf(tertiaryColor.copy(alpha = 0.8f), tertiaryColor.copy(alpha = 0.4f)),
+                start = Offset(w, 0f),
+                end = Offset(0f, h)
+            )
+        )
+        drawPath(
+            path = pathCenter,
+            brush = Brush.linearGradient(
+                colors = listOf(Color.White.copy(alpha = 0.9f), primaryColor.copy(alpha = 0.9f)),
+                start = Offset(w * 0.5f, 0f),
+                end = Offset(w * 0.5f, h)
+            )
+        )
+    }
+}
+
+@Composable
+fun CanvasActiveTabIcon(isSelected: Boolean, modifier: Modifier = Modifier) {
+    val tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    Canvas(modifier = modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        // Draw document page background
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.15f, h * 0.1f),
+            size = Size(w * 0.7f, h * 0.8f),
+            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+        )
+        // Draw lines inside
+        drawLine(
+            color = tint.copy(alpha = 0.6f),
+            start = Offset(w * 0.3f, h * 0.3f),
+            end = Offset(w * 0.7f, h * 0.3f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+        drawLine(
+            color = tint.copy(alpha = 0.6f),
+            start = Offset(w * 0.3f, h * 0.5f),
+            end = Offset(w * 0.7f, h * 0.5f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+        drawLine(
+            color = tint.copy(alpha = 0.6f),
+            start = Offset(w * 0.3f, h * 0.7f),
+            end = Offset(w * 0.6f, h * 0.7f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+    }
+}
+
+@Composable
+fun CanvasArchiveTabIcon(isSelected: Boolean, modifier: Modifier = Modifier) {
+    val tint = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    Canvas(modifier = modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        // Draw outer box
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.15f, h * 0.15f),
+            size = Size(w * 0.7f, h * 0.7f),
+            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+        )
+        // Draw vault lock wheel
+        drawCircle(
+            color = tint,
+            radius = w * 0.18f,
+            center = Offset(w * 0.5f, h * 0.5f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+        )
+        // Draw lock dial ticks
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.5f, h * 0.22f),
+            end = Offset(w * 0.5f, h * 0.32f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.5f, h * 0.68f),
+            end = Offset(w * 0.5f, h * 0.78f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.22f, h * 0.5f),
+            end = Offset(w * 0.32f, h * 0.5f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.68f, h * 0.5f),
+            end = Offset(w * 0.78f, h * 0.5f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+    }
+}
+
+@Composable
+fun CanvasTrashTabIcon(isSelected: Boolean, modifier: Modifier = Modifier) {
+    val tint = if (isSelected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    Canvas(modifier = modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        // Draw can body
+        val pathBin = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.25f, h * 0.3f)
+            lineTo(w * 0.32f, h * 0.85f)
+            lineTo(w * 0.68f, h * 0.85f)
+            lineTo(w * 0.75f, h * 0.3f)
+            close()
+        }
+        drawPath(
+            path = pathBin,
+            color = tint,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+        )
+        // Draw lid
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.15f, h * 0.25f),
+            end = Offset(w * 0.85f, h * 0.25f),
+            strokeWidth = 2.dp.toPx()
+        )
+        // Draw lid handle
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.4f, h * 0.15f),
+            size = Size(w * 0.2f, h * 0.1f),
+            cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx())
+        )
+        // Draw internal vertical ridges
+        drawLine(
+            color = tint.copy(alpha = 0.6f),
+            start = Offset(w * 0.45f, h * 0.4f),
+            end = Offset(w * 0.45f, h * 0.75f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+        drawLine(
+            color = tint.copy(alpha = 0.6f),
+            start = Offset(w * 0.55f, h * 0.4f),
+            end = Offset(w * 0.55f, h * 0.75f),
+            strokeWidth = 1.5.dp.toPx()
+        )
+    }
+}
+
+@Composable
+fun CanvasFilterSortIcon(modifier: Modifier = Modifier) {
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(modifier = modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        
+        // Horizontal lines thickness
+        val lineThickness = 2.dp.toPx()
+        val knobRadius = 3.dp.toPx()
+        
+        // Slider 1 (Top)
+        val y1 = h * 0.25f
+        drawLine(
+            color = tint.copy(alpha = 0.3f),
+            start = Offset(w * 0.15f, y1),
+            end = Offset(w * 0.85f, y1),
+            strokeWidth = lineThickness
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.15f, y1),
+            end = Offset(w * 0.45f, y1),
+            strokeWidth = lineThickness
+        )
+        drawCircle(
+            color = tint,
+            radius = knobRadius,
+            center = Offset(w * 0.45f, y1)
+        )
+        
+        // Slider 2 (Middle)
+        val y2 = h * 0.5f
+        drawLine(
+            color = tint.copy(alpha = 0.3f),
+            start = Offset(w * 0.15f, y2),
+            end = Offset(w * 0.85f, y2),
+            strokeWidth = lineThickness
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.15f, y2),
+            end = Offset(w * 0.7f, y2),
+            strokeWidth = lineThickness
+        )
+        drawCircle(
+            color = tint,
+            radius = knobRadius,
+            center = Offset(w * 0.7f, y2)
+        )
+        
+        // Slider 3 (Bottom)
+        val y3 = h * 0.75f
+        drawLine(
+            color = tint.copy(alpha = 0.3f),
+            start = Offset(w * 0.15f, y3),
+            end = Offset(w * 0.85f, y3),
+            strokeWidth = lineThickness
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.15f, y3),
+            end = Offset(w * 0.3f, y3),
+            strokeWidth = lineThickness
+        )
+        drawCircle(
+            color = tint,
+            radius = knobRadius,
+            center = Offset(w * 0.3f, y3)
         )
     }
 }

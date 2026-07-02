@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -27,9 +28,14 @@ import androidx.compose.ui.unit.sp
 
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import android.net.Uri
 import android.media.MediaPlayer
 import android.content.Intent
@@ -46,6 +52,68 @@ private sealed class MarkdownToken {
 }
 
 /**
+ * Appends text while detecting and annotating links, emails, and phone numbers.
+ */
+fun appendAnnotatedPlainSlice(
+    builder: AnnotatedString.Builder,
+    text: String,
+    primaryColor: Color
+) {
+    val urlRegex = Regex("""\b(https?://[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""")
+    val wwwRegex = Regex("""\b(www\.[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""")
+    val emailRegex = Regex("""\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b""")
+    val phoneRegex = Regex("""\+?[0-9][0-9\- ]{6,14}[0-9]""")
+
+    val matches = mutableListOf<Triple<Int, Int, Pair<String, String>>>() // start, end, <tag, value>
+
+    urlRegex.findAll(text).forEach {
+        matches.add(Triple(it.range.first, it.range.last + 1, "URL" to it.value))
+    }
+    wwwRegex.findAll(text).forEach {
+        matches.add(Triple(it.range.first, it.range.last + 1, "URL" to it.value))
+    }
+    emailRegex.findAll(text).forEach {
+        matches.add(Triple(it.range.first, it.range.last + 1, "EMAIL" to it.value))
+    }
+    phoneRegex.findAll(text).forEach {
+        val start = it.range.first
+        val end = it.range.last + 1
+        val phoneStr = it.value.trim()
+        val digitCount = phoneStr.count { c -> c.isDigit() }
+        if (digitCount >= 8) {
+            matches.add(Triple(start, end, "PHONE" to phoneStr))
+        }
+    }
+
+    val sortedMatches = matches.sortedBy { it.first }
+    var lastIndex = 0
+    
+    for (match in sortedMatches) {
+        val start = match.first
+        val end = match.second
+        val (tag, value) = match.third
+
+        if (start < lastIndex) continue // Overlap safety
+
+        if (start > lastIndex) {
+            builder.append(text.substring(lastIndex, start))
+        }
+
+        builder.pushStringAnnotation(tag = tag, annotation = value)
+        builder.pushStyle(SpanStyle(color = primaryColor, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium))
+        builder.append(text.substring(start, end))
+        builder.pop()
+        builder.pop()
+
+        lastIndex = end
+    }
+
+    if (lastIndex < text.length) {
+        builder.append(text.substring(lastIndex))
+    }
+}
+
+/**
  * Parses markdown inline styles recursively/flat-wise to make AnnotatedString robust.
  */
 fun parseInlineStyles(
@@ -58,10 +126,11 @@ fun parseInlineStyles(
     // We will use a reliable sequential checking algorithm.
     // Order of priority: 
     // 1. [color:#HEX](text) or [bg:#HEX](text)
-    // 2. Inline Code `code`
-    // 3. Highlight ==text==
-    // 4. Bold **text**
-    // 5. Italic *text* or _text_
+    // 2. Standard Markdown Link [Label](url)
+    // 3. Inline Code `code`
+    // 4. Highlight ==text==
+    // 5. Bold **text**
+    // 6. Italic *text* or _text_
     
     var remainingText = text
     while (remainingText.isNotEmpty()) {
@@ -69,12 +138,14 @@ fun parseInlineStyles(
         val colorPrefixMatch = Regex("""^\[color:(#[0-9a-fA-F]{6,8})\]\(""").find(remainingText)
         val bgPrefixMatch = Regex("""^\[bg:(#[0-9a-fA-F]{6,8})\]\(""").find(remainingText)
         
+        val linkRegex = Regex("""^\[([^\]]+)\]\(([^)]+)\)""")
         val codeRegex = Regex("""^`(.*?)`""")
         val highlightRegex = Regex("""^==(.*?)==""")
         val boldRegex = Regex("""^\*\*(.*?)\*\*""")
         val italicRegex = Regex("""^\*(.*?)\*""")
         val italicUnderlineRegex = Regex("""^_(.*?)_""")
 
+        val linkMatch = linkRegex.find(remainingText)
         val codeMatch = codeRegex.find(remainingText)
         val highlightMatch = highlightRegex.find(remainingText)
         val boldMatch = boldRegex.find(remainingText)
@@ -143,6 +214,18 @@ fun parseInlineStyles(
                     remainingText = remainingText.drop(1)
                 }
             }
+            linkMatch != null -> {
+                val label = linkMatch.groupValues[1]
+                val url = linkMatch.groupValues[2]
+                
+                builder.pushStringAnnotation(tag = "URL", annotation = url)
+                builder.pushStyle(SpanStyle(color = primaryColor, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Bold))
+                builder.append(parseInlineStyles(label, primaryColor, onSurfaceVariant))
+                builder.pop()
+                builder.pop()
+                
+                remainingText = remainingText.substring(linkMatch.value.length)
+            }
             codeMatch != null -> {
                 val insideValue = codeMatch.groupValues[1]
                 builder.pushStyle(
@@ -179,13 +262,13 @@ fun parseInlineStyles(
             }
             else -> {
                 // Find next token boundary
-                val nextSpecialIndex = remainingText.indexOfAny(listOf("[color:", "[bg:", "`", "==", "**", "*", "_"), 1)
+                val nextSpecialIndex = remainingText.indexOfAny(listOf("[color:", "[bg:", "`", "==", "**", "*", "_", "["), 1)
                 val plainTextSlice = if (nextSpecialIndex == -1) {
                     remainingText
                 } else {
                     remainingText.substring(0, nextSpecialIndex)
                 }
-                builder.append(plainTextSlice)
+                appendAnnotatedPlainSlice(builder, plainTextSlice, primaryColor)
                 remainingText = remainingText.substring(plainTextSlice.length)
             }
         }
@@ -206,244 +289,263 @@ fun MarkdownContent(
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val lines = remember(rawText) { rawText.split("\n") }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        var index = 0
-        while (index < lines.size) {
-            val line = lines[index]
-            val trimmedLine = line.trim()
+    SelectionContainer(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            var index = 0
+            while (index < lines.size) {
+                val line = lines[index]
+                val trimmedLine = line.trim()
 
-            // 1. Code block handling:
-            if (trimmedLine.startsWith("```")) {
-                val language = trimmedLine.substring(3).trim().ifEmpty { "code" }
-                val codeBuilder = StringBuilder()
-                index++
-                while (index < lines.size && !lines[index].trim().startsWith("```")) {
-                    codeBuilder.append(lines[index]).append("\n")
+                // 1. Code block handling:
+                if (trimmedLine.startsWith("```")) {
+                    val language = trimmedLine.substring(3).trim().ifEmpty { "code" }
+                    val codeBuilder = StringBuilder()
                     index++
+                    while (index < lines.size && !lines[index].trim().startsWith("```")) {
+                        codeBuilder.append(lines[index]).append("\n")
+                        index++
+                    }
+                    CodeBlockLayout(code = codeBuilder.toString(), language = language)
+                    if (index < lines.size) index++ // Consume ending ```
+                    continue
                 }
-                CodeBlockLayout(code = codeBuilder.toString(), language = language)
-                if (index < lines.size) index++ // Consume ending ```
-                continue
-            }
 
-            // 2. Table handling:
-            if (trimmedLine.startsWith("|") && trimmedLine.endsWith("|") && index + 1 < lines.size && lines[index + 1].trim().startsWith("|")) {
-                val tableLines = mutableListOf<String>()
-                while (index < lines.size && lines[index].trim().startsWith("|") && lines[index].trim().endsWith("|")) {
-                    tableLines.add(lines[index].trim())
+                // 2. Table handling:
+                if (trimmedLine.startsWith("|") && trimmedLine.endsWith("|") && index + 1 < lines.size && lines[index + 1].trim().startsWith("|")) {
+                    val tableLines = mutableListOf<String>()
+                    while (index < lines.size && lines[index].trim().startsWith("|") && lines[index].trim().endsWith("|")) {
+                        tableLines.add(lines[index].trim())
+                        index++
+                    }
+                    TableLayout(tableLines = tableLines, primaryColor = primaryColor, onSurfaceVariant = onSurfaceVariant)
+                    continue
+                }
+
+                // 3. Inline Images handling: ![desc](uriString)
+                val imageRegex = Regex("""^!\[(.*?)\]\((.*?)\)$""")
+                val imageMatch = imageRegex.matchEntire(trimmedLine)
+                if (imageMatch != null) {
+                    val desc = imageMatch.groupValues[1]
+                    val uriStr = imageMatch.groupValues[2]
+                    ImageLayout(uriString = uriStr, description = desc)
                     index++
+                    continue
                 }
-                TableLayout(tableLines = tableLines, primaryColor = primaryColor, onSurfaceVariant = onSurfaceVariant)
-                continue
-            }
 
-            // 3. Inline Images handling: ![desc](uriString)
-            val imageRegex = Regex("""^!\[(.*?)\]\((.*?)\)$""")
-            val imageMatch = imageRegex.matchEntire(trimmedLine)
-            if (imageMatch != null) {
-                val desc = imageMatch.groupValues[1]
-                val uriStr = imageMatch.groupValues[2]
-                ImageLayout(uriString = uriStr, description = desc)
-                index++
-                continue
-            }
+                // 4. Inline Voice Note / Audio handling: [audio:Label](uriString) or [voice:Label](uriString)
+                val audioRegex = Regex("""^\[(audio|voice)(?::(.*?))?\]\((.*?)\)$""")
+                val audioMatch = audioRegex.matchEntire(trimmedLine)
+                if (audioMatch != null) {
+                    val label = audioMatch.groupValues[2].ifEmpty { "Voice Recording" }
+                    val uriStr = audioMatch.groupValues[3]
+                    AudioPlayerLayout(uriString = uriStr, label = label)
+                    index++
+                    continue
+                }
 
-            // 4. Inline Voice Note / Audio handling: [audio:Label](uriString) or [voice:Label](uriString)
-            val audioRegex = Regex("""^\[(audio|voice)(?::(.*?))?\]\((.*?)\)$""")
-            val audioMatch = audioRegex.matchEntire(trimmedLine)
-            if (audioMatch != null) {
-                val label = audioMatch.groupValues[2].ifEmpty { "Voice Recording" }
-                val uriStr = audioMatch.groupValues[3]
-                AudioPlayerLayout(uriString = uriStr, label = label)
-                index++
-                continue
-            }
+                // 5. Generic File attachment: [file:Filename](uriString)
+                val fileRegex = Regex("""^\[file(?::(.*?))?\]\((.*?)\)$""")
+                val fileMatch = fileRegex.matchEntire(trimmedLine)
+                if (fileMatch != null) {
+                    val filename = fileMatch.groupValues[1].ifEmpty { "File Attachment" }
+                    val uriStr = fileMatch.groupValues[2]
+                    FileAttachmentLayout(uriString = uriStr, filename = filename)
+                    index++
+                    continue
+                }
 
-            // 5. Generic File attachment: [file:Filename](uriString)
-            val fileRegex = Regex("""^\[file(?::(.*?))?\]\((.*?)\)$""")
-            val fileMatch = fileRegex.matchEntire(trimmedLine)
-            if (fileMatch != null) {
-                val filename = fileMatch.groupValues[1].ifEmpty { "File Attachment" }
-                val uriStr = fileMatch.groupValues[2]
-                FileAttachmentLayout(uriString = uriStr, filename = filename)
-                index++
-                continue
-            }
-
-            // 6. Headers
-            if (trimmedLine.startsWith("# ")) {
-                val headerText = trimmedLine.substring(2)
-                Text(
-                    text = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                )
-                Divider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), thickness = 2.dp)
-                index++
-                continue
-            }
-
-            if (trimmedLine.startsWith("## ")) {
-                val headerText = trimmedLine.substring(3)
-                Text(
-                    text = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                )
-                index++
-                continue
-            }
-
-            if (trimmedLine.startsWith("### ")) {
-                val headerText = trimmedLine.substring(4)
-                Text(
-                    text = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
-                )
-                index++
-                continue
-            }
-
-            // 7. Checklist Items: - [ ] or - [x]
-            val isUncheckedBox = trimmedLine.startsWith("- [ ]") || trimmedLine.startsWith("* [ ]")
-            val isCheckedBox = trimmedLine.startsWith("- [x]") || trimmedLine.startsWith("* [x]") || trimmedLine.startsWith("- [X]") || trimmedLine.startsWith("* [X]")
-            if (isUncheckedBox || isCheckedBox) {
-                val checked = isCheckedBox
-                val checkboxTxt = trimmedLine.substring(5).trim()
-                val lineIndex = index
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = onCheckedChange != null) {
-                            onCheckedChange?.invoke(lineIndex, !checked)
-                        }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = if (checked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
-                        contentDescription = "Checklist Toggle",
-                        tint = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = parseInlineStyles(checkboxTxt, primaryColor, onSurfaceVariant),
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            textDecoration = if (checked) TextDecoration.LineThrough else TextDecoration.None
+                // 6. Headers
+                if (trimmedLine.startsWith("# ")) {
+                    val headerText = trimmedLine.substring(2)
+                    InteractiveText(
+                        annotatedString = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Black,
+                            textDirection = TextDirection.ContentOrLtr
                         ),
-                        color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                     )
+                    Divider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), thickness = 2.dp)
+                    index++
+                    continue
                 }
-                index++
-                continue
-            }
 
-            // 8. Bullet lists
-            if (trimmedLine.startsWith("- ") || trimmedLine.startsWith("* ")) {
-                val bulletTxt = trimmedLine.substring(2)
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    modifier = Modifier.padding(start = 14.dp, top = 2.dp, bottom = 2.dp)
-                ) {
-                    Box(
+                if (trimmedLine.startsWith("## ")) {
+                    val headerText = trimmedLine.substring(3)
+                    InteractiveText(
+                        annotatedString = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontWeight = FontWeight.Bold,
+                            textDirection = TextDirection.ContentOrLtr
+                        ),
+                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                    )
+                    index++
+                    continue
+                }
+
+                if (trimmedLine.startsWith("### ")) {
+                    val headerText = trimmedLine.substring(4)
+                    InteractiveText(
+                        annotatedString = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            color = MaterialTheme.colorScheme.tertiary,
+                            fontWeight = FontWeight.SemiBold,
+                            textDirection = TextDirection.ContentOrLtr
+                        ),
+                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                    )
+                    index++
+                    continue
+                }
+
+                // 7. Checklist Items: - [ ] or - [x]
+                val isUncheckedBox = trimmedLine.startsWith("- [ ]") || trimmedLine.startsWith("* [ ]")
+                val isCheckedBox = trimmedLine.startsWith("- [x]") || trimmedLine.startsWith("* [x]") || trimmedLine.startsWith("- [X]") || trimmedLine.startsWith("* [X]")
+                if (isUncheckedBox || isCheckedBox) {
+                    val checked = isCheckedBox
+                    val checkboxTxt = trimmedLine.substring(5).trim()
+                    val lineIndex = index
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .padding(top = 8.dp, end = 10.dp)
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                    Text(
-                        text = parseInlineStyles(bulletTxt, primaryColor, onSurfaceVariant),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                index++
-                continue
-            }
-
-            // 9. Blockquotes
-            if (trimmedLine.startsWith("> ")) {
-                val quoteTxt = trimmedLine.substring(2)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 4.dp, top = 6.dp, bottom = 6.dp)
-                        .clip(RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))
-                        .drawBehindBorderLeft(color = MaterialTheme.colorScheme.primary, width = 4.dp)
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = onCheckedChange != null) {
+                                onCheckedChange?.invoke(lineIndex, !checked)
+                            }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.FormatQuote,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                            modifier = Modifier.size(20.dp)
+                            imageVector = if (checked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                            contentDescription = "Checklist Toggle",
+                            tint = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(22.dp)
                         )
+                        Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = parseInlineStyles(quoteTxt, primaryColor, onSurfaceVariant),
+                            text = parseInlineStyles(checkboxTxt, primaryColor, onSurfaceVariant),
                             style = MaterialTheme.typography.bodyLarge.copy(
-                                fontStyle = FontStyle.Italic,
-                                lineHeight = 22.sp
+                                textDecoration = if (checked) TextDecoration.LineThrough else TextDecoration.None,
+                                textDirection = TextDirection.ContentOrLtr
                             ),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                            color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
                         )
                     }
+                    index++
+                    continue
+                }
+
+                // 8. Bullet lists
+                if (trimmedLine.startsWith("- ") || trimmedLine.startsWith("* ")) {
+                    val bulletTxt = trimmedLine.substring(2)
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        modifier = Modifier.padding(start = 14.dp, top = 2.dp, bottom = 2.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 8.dp, end = 10.dp)
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                        InteractiveText(
+                            annotatedString = parseInlineStyles(bulletTxt, primaryColor, onSurfaceVariant),
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textDirection = TextDirection.ContentOrLtr
+                            )
+                        )
+                    }
+                    index++
+                    continue
+                }
+
+                // 9. Blockquotes
+                if (trimmedLine.startsWith("> ")) {
+                    val quoteTxt = trimmedLine.substring(2)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 4.dp, top = 6.dp, bottom = 6.dp)
+                            .clip(RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))
+                            .drawBehindBorderLeft(color = MaterialTheme.colorScheme.primary, width = 4.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.FormatQuote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            InteractiveText(
+                                annotatedString = parseInlineStyles(quoteTxt, primaryColor, onSurfaceVariant),
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontStyle = FontStyle.Italic,
+                                    lineHeight = 22.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                    textDirection = TextDirection.ContentOrLtr
+                                )
+                            )
+                        }
+                    }
+                    index++
+                    continue
+                }
+
+                // 10. Horizontal Rules
+                if (trimmedLine == "---" || trimmedLine == "***" || trimmedLine == "___") {
+                    Divider(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                    index++
+                    continue
+                }
+
+                // 11. Default regular line
+                if (line.isNotEmpty()) {
+                    InteractiveText(
+                        annotatedString = parseInlineStyles(line, primaryColor, onSurfaceVariant),
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textDirection = TextDirection.ContentOrLtr
+                        )
+                    )
+                } else {
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
                 index++
-                continue
             }
-
-            // 10. Horizontal Rules
-            if (trimmedLine == "---" || trimmedLine == "***" || trimmedLine == "___") {
-                Divider(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-                index++
-                continue
-            }
-
-            // 11. Default regular line
-            if (line.isNotEmpty()) {
-                Text(
-                    text = parseInlineStyles(line, primaryColor, onSurfaceVariant),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            } else {
-                Spacer(modifier = Modifier.height(6.dp))
-            }
-            index++
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ImageLayout(uriString: String, description: String) {
     var showDialog by remember { mutableStateOf(false) }
+    var showOptionsDialog by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable { showDialog = true },
+            .combinedClickable(
+                onClick = { showDialog = true },
+                onLongClick = { showOptionsDialog = true }
+            ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
     ) {
         Column {
@@ -517,8 +619,17 @@ fun ImageLayout(uriString: String, description: String) {
             }
         }
     }
+
+    if (showOptionsDialog) {
+        AttachmentOptionsDialog(
+            uriString = uriString,
+            filename = description.ifBlank { "Image.jpg" },
+            onDismiss = { showOptionsDialog = false }
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AudioPlayerLayout(uriString: String, label: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -592,10 +703,16 @@ fun AudioPlayerLayout(uriString: String, label: String) {
         }
     }
 
+    var showOptionsDialog by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp)),
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(
+                onClick = { /* Play/Pause button is clicked separately, but clicking the card itself can do nothing or show the same option dialog */ },
+                onLongClick = { showOptionsDialog = true }
+            ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.25f))
     ) {
         Row(
@@ -669,38 +786,52 @@ fun AudioPlayerLayout(uriString: String, label: String) {
             }
         }
     }
+
+    if (showOptionsDialog) {
+        AttachmentOptionsDialog(
+            uriString = uriString,
+            filename = label.ifBlank { "VoiceNote.mp3" },
+            onDismiss = { showOptionsDialog = false }
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileAttachmentLayout(uriString: String, filename: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var showOptionsDialog by remember { mutableStateOf(false) }
+    val mimeType = remember(uriString, filename) { getMimeType(uriString, filename) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable {
-                try {
-                    val parsedUri = android.net.Uri.parse(uriString)
-                    val shareUri = if (parsedUri.scheme == "file") {
-                        val file = java.io.File(parsedUri.path ?: "")
-                        androidx.core.content.FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            file
-                        )
-                    } else {
-                        parsedUri
+            .combinedClickable(
+                onClick = {
+                    try {
+                        val parsedUri = android.net.Uri.parse(uriString)
+                        val shareUri = if (parsedUri.scheme == "file") {
+                            val file = java.io.File(parsedUri.path ?: "")
+                            androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                file
+                            )
+                        } else {
+                            parsedUri
+                        }
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            setDataAndType(shareUri, mimeType)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(intent, "Open File With"))
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Cannot open this file format: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
                     }
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                        setDataAndType(shareUri, "*/*")
-                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(android.content.Intent.createChooser(intent, "Open File With"))
-                } catch (e: Exception) {
-                    android.widget.Toast.makeText(context, "Cannot open this file format: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            },
+                },
+                onLongClick = { showOptionsDialog = true }
+            ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
     ) {
@@ -725,7 +856,7 @@ fun FileAttachmentLayout(uriString: String, filename: String) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "Tap to open attached file",
+                    text = "Tap to open, Long press for options",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -737,6 +868,14 @@ fun FileAttachmentLayout(uriString: String, filename: String) {
                 modifier = Modifier.size(18.dp)
             )
         }
+    }
+
+    if (showOptionsDialog) {
+        AttachmentOptionsDialog(
+            uriString = uriString,
+            filename = filename.ifBlank { "Attachment" },
+            onDismiss = { showOptionsDialog = false }
+        )
     }
 }
 
@@ -956,5 +1095,254 @@ fun Modifier.drawBehindBorderLeft(color: Color, width: androidx.compose.ui.unit.
         start = Offset(0f, 0f),
         end = Offset(0f, size.height),
         strokeWidth = strokeWidthPx
+    )
+}
+
+@Composable
+fun InteractiveText(
+    annotatedString: AnnotatedString,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val hasAnnotations = remember(annotatedString) {
+        annotatedString.getStringAnnotations(tag = "URL", start = 0, end = annotatedString.length).isNotEmpty() ||
+                annotatedString.getStringAnnotations(tag = "EMAIL", start = 0, end = annotatedString.length).isNotEmpty() ||
+                annotatedString.getStringAnnotations(tag = "PHONE", start = 0, end = annotatedString.length).isNotEmpty()
+    }
+    
+    if (hasAnnotations) {
+        androidx.compose.foundation.text.ClickableText(
+            text = annotatedString,
+            style = style.copy(textDirection = TextDirection.ContentOrLtr),
+            modifier = modifier,
+            onClick = { offset ->
+                annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                    .firstOrNull()?.let { annotation ->
+                        try {
+                            val uriStr = annotation.item
+                            val intent = if (uriStr.startsWith("tel:") || uriStr.startsWith("mailto:") || uriStr.startsWith("http://") || uriStr.startsWith("https://")) {
+                                Intent(Intent.ACTION_VIEW, Uri.parse(uriStr))
+                            } else {
+                                val webUri = if (!uriStr.contains("://")) "https://$uriStr" else uriStr
+                                Intent(Intent.ACTION_VIEW, Uri.parse(webUri))
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "No app found to handle this link", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        return@ClickableText
+                    }
+                annotatedString.getStringAnnotations(tag = "EMAIL", start = offset, end = offset)
+                    .firstOrNull()?.let { annotation ->
+                        try {
+                            val email = annotation.item
+                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$email"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "No app found to send email", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        return@ClickableText
+                    }
+                annotatedString.getStringAnnotations(tag = "PHONE", start = offset, end = offset)
+                    .firstOrNull()?.let { annotation ->
+                        try {
+                            val phone = annotation.item
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "No app found to make phone calls", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        return@ClickableText
+                    }
+            }
+        )
+    } else {
+        Text(
+            text = annotatedString,
+            style = style.copy(textDirection = TextDirection.ContentOrLtr),
+            modifier = modifier
+        )
+    }
+}
+
+fun getMimeType(uriString: String, filename: String): String {
+    val extension = java.io.File(filename).extension.lowercase()
+    return when (extension) {
+        "apk" -> "application/vnd.android.package-archive"
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        "ogg" -> "audio/ogg"
+        "m4a", "aac" -> "audio/mp4"
+        "mp4" -> "video/mp4"
+        "3gp" -> "video/3gpp"
+        "mkv" -> "video/x-matroska"
+        "pdf" -> "application/pdf"
+        "txt" -> "text/plain"
+        "md" -> "text/markdown"
+        "zip" -> "application/zip"
+        else -> {
+            val contentResolver = android.webkit.MimeTypeMap.getSingleton()
+            val mime = contentResolver.getMimeTypeFromExtension(extension)
+            mime ?: "*/*"
+        }
+    }
+}
+
+@Composable
+fun AttachmentOptionsDialog(
+    uriString: String,
+    filename: String,
+    onDismiss: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val mimeType = remember(uriString, filename) { getMimeType(uriString, filename) }
+    val isApk = remember(filename) { filename.lowercase().endsWith(".apk") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = if (mimeType.startsWith("image/")) Icons.Default.Image
+                              else if (mimeType.startsWith("audio/")) Icons.Default.PlayArrow
+                              else Icons.Default.InsertDriveFile,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(36.dp)
+            )
+        },
+        title = {
+            Text(
+                text = filename.ifEmpty { "Attachment Options" },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Text(
+                text = "Choose how you want to open or interact with this attachment.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (isApk) {
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            try {
+                                val parsedUri = android.net.Uri.parse(uriString)
+                                val shareUri = if (parsedUri.scheme == "file") {
+                                    val file = java.io.File(parsedUri.path ?: "")
+                                    androidx.core.content.FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file
+                                    )
+                                } else {
+                                    parsedUri
+                                }
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                    setDataAndType(shareUri, "application/vnd.android.package-archive")
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "Installer failed: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Install APK", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        onDismiss()
+                        try {
+                            val parsedUri = android.net.Uri.parse(uriString)
+                            val shareUri = if (parsedUri.scheme == "file") {
+                                val file = java.io.File(parsedUri.path ?: "")
+                                androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file
+                                )
+                            } else {
+                                parsedUri
+                            }
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                setDataAndType(shareUri, mimeType)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(intent, "Open with external application"))
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Cannot open: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isApk) "Open as File (View Contents)" else "Open in External App", fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        try {
+                            val parsedUri = android.net.Uri.parse(uriString)
+                            val shareUri = if (parsedUri.scheme == "file") {
+                                val file = java.io.File(parsedUri.path ?: "")
+                                androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file
+                                )
+                            } else {
+                                parsedUri
+                            }
+                            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = mimeType
+                                putExtra(android.content.Intent.EXTRA_STREAM, shareUri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(intent, "Share Attachment"))
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Cannot share: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Share/Send to App", fontWeight = FontWeight.Bold)
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancel")
+                }
+            }
+        }
     )
 }

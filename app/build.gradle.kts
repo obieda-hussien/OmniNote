@@ -86,6 +86,7 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
+  implementation(libs.okhttp)
   
   // Google AdMob (Kept based on your request for future use)
   // implementation("com.google.android.gms:play-services-ads:23.0.0")

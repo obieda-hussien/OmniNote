@@ -7,9 +7,22 @@ import com.omninote.data.NoteRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
+sealed class NoteEvent {
+    data class Trashed(val note: NoteEntity, val message: String = "Moved to Trash") : NoteEvent()
+    data class Archived(val note: NoteEntity, val message: String = "Note Archived") : NoteEvent()
+    data class Restored(val note: NoteEntity, val message: String = "Note Restored") : NoteEvent()
+    data class Unarchived(val note: NoteEntity, val message: String = "Note Unarchived") : NoteEvent()
+}
+
 class NotesViewModel(private val repository: NoteRepository) : ViewModel() {
+
+    private val _noteEvent = MutableSharedFlow<NoteEvent>()
+    val noteEvent: SharedFlow<NoteEvent> = _noteEvent.asSharedFlow()
 
     val allNotes: StateFlow<List<NoteEntity>> = repository.allNotes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -37,25 +50,33 @@ class NotesViewModel(private val repository: NoteRepository) : ViewModel() {
     
     fun moveToTrash(note: NoteEntity) {
         viewModelScope.launch {
-            repository.insert(note.copy(isTrashed = true))
+            val noteWithTrash = note.copy(isTrashed = true)
+            repository.insert(noteWithTrash)
+            _noteEvent.emit(NoteEvent.Trashed(noteWithTrash))
         }
     }
     
     fun restoreFromTrash(note: NoteEntity) {
         viewModelScope.launch {
-            repository.insert(note.copy(isTrashed = false))
+            val restoredNote = note.copy(isTrashed = false)
+            repository.insert(restoredNote)
+            _noteEvent.emit(NoteEvent.Restored(restoredNote))
         }
     }
 
     fun archiveNote(note: NoteEntity) {
         viewModelScope.launch {
-            repository.insert(note.copy(isArchived = true))
+            val archivedNote = note.copy(isArchived = true)
+            repository.insert(archivedNote)
+            _noteEvent.emit(NoteEvent.Archived(archivedNote))
         }
     }
 
     fun unarchiveNote(note: NoteEntity) {
         viewModelScope.launch {
-            repository.insert(note.copy(isArchived = false))
+            val unarchivedNote = note.copy(isArchived = false)
+            repository.insert(unarchivedNote)
+            _noteEvent.emit(NoteEvent.Unarchived(unarchivedNote))
         }
     }
 
