@@ -63,7 +63,10 @@ enum class CanvasIconType {
     HEADING_2,
     HIGHLIGHT,
     QUOTE,
-    ARROW_RIGHT
+    ARROW_RIGHT,
+    UNDO,
+    REDO,
+    INSIGHTS
 }
 
 @Composable
@@ -1100,6 +1103,67 @@ fun CanvasCustomIcon(
                     color = tint,
                     start = Offset(w * 0.55f, h * 0.75f),
                     end = Offset(w * 0.8f, h * 0.5f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+            }
+            CanvasIconType.UNDO -> {
+                val strokeW = 2.dp.toPx()
+                drawArc(
+                    color = tint,
+                    startAngle = 180f,
+                    sweepAngle = 270f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.2f, h * 0.35f),
+                    size = Size(w * 0.6f, h * 0.45f),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                )
+                val arrowPath = Path().apply {
+                    moveTo(w * 0.4f, h * 0.2f)
+                    lineTo(w * 0.2f, h * 0.35f)
+                    lineTo(w * 0.4f, h * 0.5f)
+                }
+                drawPath(path = arrowPath, color = tint, style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+            CanvasIconType.REDO -> {
+                val strokeW = 2.dp.toPx()
+                drawArc(
+                    color = tint,
+                    startAngle = 90f,
+                    sweepAngle = 270f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.2f, h * 0.35f),
+                    size = Size(w * 0.6f, h * 0.45f),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                )
+                val arrowPath = Path().apply {
+                    moveTo(w * 0.6f, h * 0.2f)
+                    lineTo(w * 0.8f, h * 0.35f)
+                    lineTo(w * 0.6f, h * 0.5f)
+                }
+                drawPath(path = arrowPath, color = tint, style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+            CanvasIconType.INSIGHTS -> {
+                val strokeW = 2.dp.toPx()
+                // Simple Bar chart
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.2f, h * 0.8f),
+                    end = Offset(w * 0.2f, h * 0.5f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.5f, h * 0.8f),
+                    end = Offset(w * 0.5f, h * 0.2f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.8f, h * 0.8f),
+                    end = Offset(w * 0.8f, h * 0.4f),
                     strokeWidth = strokeW,
                     cap = StrokeCap.Round
                 )

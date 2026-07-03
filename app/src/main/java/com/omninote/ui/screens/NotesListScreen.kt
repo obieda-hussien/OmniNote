@@ -10,6 +10,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
@@ -351,7 +353,7 @@ data class CustomSnackbarData(
     val onAction: (() -> Unit)? = null
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun NotesListScreen(
     viewModel: NotesViewModel,
@@ -361,7 +363,8 @@ fun NotesListScreen(
     val haptic = LocalHapticFeedback.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var customSnackbarData by remember { mutableStateOf<CustomSnackbarData?>(null) }
+    val snackbarQueue = remember { androidx.compose.runtime.mutableStateListOf<CustomSnackbarData>() }
+    val currentSnackbar = snackbarQueue.firstOrNull()
     val animatableProgress = remember { androidx.compose.animation.core.Animatable(1f) }
     var snackbarVisible by remember { mutableStateOf(false) }
 
@@ -372,18 +375,20 @@ fun NotesListScreen(
         actionLabel: String? = null,
         onAction: (() -> Unit)? = null
     ) {
-        customSnackbarData = CustomSnackbarData(
-            id = System.currentTimeMillis(),
-            title = title,
-            message = message,
-            type = type,
-            actionLabel = actionLabel,
-            onAction = onAction
+        snackbarQueue.add(
+            CustomSnackbarData(
+                id = System.currentTimeMillis(),
+                title = title,
+                message = message,
+                type = type,
+                actionLabel = actionLabel,
+                onAction = onAction
+            )
         )
     }
 
-    LaunchedEffect(customSnackbarData) {
-        if (customSnackbarData != null) {
+    LaunchedEffect(currentSnackbar) {
+        if (currentSnackbar != null) {
             animatableProgress.snapTo(1f)
             snackbarVisible = true
             animatableProgress.animateTo(
@@ -392,7 +397,9 @@ fun NotesListScreen(
             )
             snackbarVisible = false
             kotlinx.coroutines.delay(300)
-            customSnackbarData = null
+            if (snackbarQueue.isNotEmpty()) {
+                snackbarQueue.removeAt(0)
+            }
         } else {
             snackbarVisible = false
         }
@@ -402,8 +409,17 @@ fun NotesListScreen(
     val archivedNotes by viewModel.archivedNotes.collectAsStateWithLifecycle()
     val trashedNotes by viewModel.trashedNotes.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val sharedPrefs = remember { context.getSharedPreferences("OmniNotePrefs", android.content.Context.MODE_PRIVATE) }
+
     // 3-tab smooth ViewPager
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
+    val initialPage = remember { sharedPrefs.getInt("lastTab", 0) }
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 3 })
+    
+    LaunchedEffect(pagerState.currentPage) {
+        sharedPrefs.edit().putInt("lastTab", pagerState.currentPage).apply()
+    }
+    
     val currentTab = when (pagerState.currentPage) {
         0 -> "ACTIVE"
         1 -> "ARCHIVED"
@@ -419,10 +435,18 @@ fun NotesListScreen(
     var selectedTag by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
-    // Configuration states
-    var sortBy by remember { mutableStateOf("newest") } // "newest", "oldest", "a-z", "z-a", "color", "pin"
-    var filterPinnedOnly by remember { mutableStateOf(false) }
-    var isGridView by remember { mutableStateOf(true) }
+    // Configuration states (Persisted)
+    var sortBy by remember { mutableStateOf(sharedPrefs.getString("sortBy", "newest") ?: "newest") }
+    var filterPinnedOnly by remember { mutableStateOf(sharedPrefs.getBoolean("filterPinnedOnly", false)) }
+    var isGridView by remember { mutableStateOf(sharedPrefs.getBoolean("isGridView", true)) }
+
+    LaunchedEffect(sortBy, filterPinnedOnly, isGridView) {
+        sharedPrefs.edit()
+            .putString("sortBy", sortBy)
+            .putBoolean("filterPinnedOnly", filterPinnedOnly)
+            .putBoolean("isGridView", isGridView)
+            .apply()
+    }
 
     // Scroll state handlers for top and bottom bar hide/show dynamics
     val gridState0 = rememberLazyStaggeredGridState()
@@ -537,11 +561,12 @@ fun NotesListScreen(
 
     // Snackbar state for undo
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
     // Quick Actions pop-up State
     var showQuickActionsForNote by remember { mutableStateOf<NoteEntity?>(null) }
     var showSortBottomSheet by remember { mutableStateOf(false) }
+    var showStatsDashboard by remember { mutableStateOf(false) }
+    var quickCaptureText by remember { mutableStateOf("") }
 
     // Lock prompt state
     var noteToUnlock by remember { mutableStateOf<NoteEntity?>(null) }
@@ -551,6 +576,7 @@ fun NotesListScreen(
 
     // Permanent deletion confirmation state
     var noteToDeletePermanently by remember { mutableStateOf<NoteEntity?>(null) }
+    var showEmptyTrashDialog by remember { mutableStateOf(false) }
 
     // Retrieve unique tags from all stored notes
     val allTags = remember(activeNotes, archivedNotes, trashedNotes) {
@@ -632,11 +658,16 @@ fun NotesListScreen(
     val pinnedNotesCount = notes.count { it.isPinned }
     val audioNotesCount = notes.count { it.content.contains("[voice:") || it.content.contains("[audio:") }
 
+    val isImeVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    val bottomOffset by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomBarVisible && !isImeVisible) 96.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+    )
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
+                .fillMaxSize(),
         snackbarHost = {
             SnackbarHost(snackbarHostState) { snackbarData ->
                 Surface(
@@ -722,6 +753,7 @@ fun NotesListScreen(
                             )
                         )
                     )
+                    .statusBarsPadding()
                     .padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -772,6 +804,17 @@ fun NotesListScreen(
                                         }
                                     )
                                 }
+                            }
+                            
+                            // Stats Dashboard Button
+                            IconButton(
+                                onClick = { showStatsDashboard = true },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                            ) {
+                                CanvasCustomIcon(CanvasIconType.INSIGHTS, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -850,12 +893,13 @@ fun NotesListScreen(
         },
         bottomBar = {
             AnimatedVisibility(
-                visible = isBottomBarVisible,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                visible = isBottomBarVisible && !isImeVisible,
+                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
+                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
             ) {
                 Box(
                     modifier = Modifier
+                        .navigationBarsPadding()
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 16.dp)
                         .clip(RoundedCornerShape(32.dp))
@@ -887,7 +931,12 @@ fun NotesListScreen(
                             )
                         )
                         NavigationBarItem(
-                            icon = { CanvasArchiveTabIcon(isSelected = currentTab == "ARCHIVED") },
+                            icon = { 
+                                CanvasCustomIcon(
+                                    type = CanvasIconType.ARCHIVE,
+                                    tint = if (currentTab == "ARCHIVED") MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                ) 
+                            },
                             label = { Text("Archive", fontWeight = FontWeight.Bold) },
                             selected = currentTab == "ARCHIVED",
                             onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
@@ -915,62 +964,6 @@ fun NotesListScreen(
                             )
                         )
                     }
-                }
-            }
-        },
-        floatingActionButton = {
-            AnimatedVisibility(
-                visible = isBottomBarVisible,
-                enter = fadeIn() + scaleIn(),
-                exit = fadeOut() + scaleOut()
-            ) {
-                if (currentTab == "ACTIVE") {
-                    ExtendedFloatingActionButton(
-                        text = { 
-                            Text(
-                                text = "New Note",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                            ) 
-                        },
-                        icon = { 
-                            CanvasCustomIcon(
-                                type = CanvasIconType.EDIT
-                            ) 
-                        },
-                        onClick = onNavigateToAddNote,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        shape = RoundedCornerShape(20.dp),
-                        elevation = FloatingActionButtonDefaults.elevation(
-                            defaultElevation = 6.dp,
-                            pressedElevation = 2.dp,
-                            hoveredElevation = 8.dp
-                        ),
-                        modifier = Modifier.padding(bottom = 0.dp, end = 0.dp)
-                    )
-                } else if (currentTab == "TRASHED" && notes.isNotEmpty()) {
-                    ExtendedFloatingActionButton(
-                        text = { 
-                            Text(
-                                text = "Empty",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                            ) 
-                        },
-                        icon = { 
-                            CanvasCustomIcon(
-                                type = CanvasIconType.DELETE
-                            ) 
-                        },
-                        onClick = { viewModel.emptyTrash() },
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        shape = RoundedCornerShape(20.dp),
-                        elevation = FloatingActionButtonDefaults.elevation(
-                            defaultElevation = 6.dp,
-                            pressedElevation = 2.dp
-                        ),
-                        modifier = Modifier.padding(bottom = 0.dp, end = 0.dp)
-                    )
                 }
             }
         },
@@ -1490,7 +1483,7 @@ fun NotesListScreen(
                     }
                 }
                 }
-            }
+            } // HorizontalPager
         }
     }
 
@@ -1643,6 +1636,89 @@ fun NotesListScreen(
                     modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
                     Text("Apply Configuration", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+
+    // Stats & Gamification Dashboard
+    if (showStatsDashboard) {
+        val totalWords = notes.sumOf { it.content.split(Regex("\\s+")).count { word -> word.isNotBlank() } }
+        val avgWords = if (notes.isNotEmpty()) totalWords / notes.size else 0
+        val writerLevel = when {
+            totalNotesCount >= 50 -> "Master Scribe"
+            totalNotesCount >= 20 -> "Prolific Writer"
+            totalNotesCount >= 5 -> "Novice Note-taker"
+            else -> "Beginner"
+        }
+        val levelColor = when {
+            totalNotesCount >= 50 -> Color(0xFFFFD700) // Gold
+            totalNotesCount >= 20 -> Color(0xFFC0C0C0) // Silver
+            totalNotesCount >= 5 -> Color(0xFFCD7F32)  // Bronze
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+
+        ModalBottomSheet(
+            onDismissRequest = { showStatsDashboard = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    CanvasCustomIcon(CanvasIconType.INSIGHTS, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Your Productivity",
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black)
+                    )
+                    Text(
+                        text = writerLevel,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = levelColor
+                    )
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Total Notes", style = MaterialTheme.typography.labelMedium)
+                            Text("$totalNotesCount", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black), color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Total Words", style = MaterialTheme.typography.labelMedium)
+                            Text("$totalWords", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black), color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Pinned", style = MaterialTheme.typography.labelMedium)
+                            Text("$pinnedNotesCount", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.tertiary)
+                        }
+                    }
+                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Avg. Length", style = MaterialTheme.typography.labelMedium)
+                            Text("$avgWords", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = { showStatsDashboard = false },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Keep Writing", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1932,6 +2008,34 @@ fun NotesListScreen(
         )
     }
 
+    if (showEmptyTrashDialog) {
+        AlertDialog(
+            onDismissRequest = { showEmptyTrashDialog = false },
+            title = { Text(text = stringResource(R.string.empty_trash_title)) },
+            text = { Text(text = stringResource(R.string.empty_trash_msg)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.emptyTrash()
+                        showEmptyTrashDialog = false
+                        showCustomSnackbar(
+                            title = "Trash Emptied",
+                            message = "All trashed notes have been permanently deleted.",
+                            type = SnackbarType.ERROR
+                        )
+                    }
+                ) {
+                    Text(text = stringResource(R.string.delete_permanent_confirm), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEmptyTrashDialog = false }) {
+                    Text(text = stringResource(R.string.delete_permanent_cancel))
+                }
+            }
+        )
+    }
+
     if (noteToUnlock != null) {
         ModalBottomSheet(
             onDismissRequest = { noteToUnlock = null },
@@ -2066,7 +2170,7 @@ fun NotesListScreen(
             animationSpec = tween(durationMillis = 300)
         ) + fadeOut() + shrinkVertically()
     ) {
-        customSnackbarData?.let { data ->
+        currentSnackbar?.let { data ->
             val iconContainerColor: Color
             val iconTint: Color
             val titleTextColor: Color
@@ -2171,7 +2275,9 @@ fun NotesListScreen(
                                         snackbarVisible = false
                                         scope.launch {
                                             kotlinx.coroutines.delay(300)
-                                            customSnackbarData = null
+                                            if (snackbarQueue.isNotEmpty()) {
+                                                snackbarQueue.removeAt(0)
+                                            }
                                         }
                                     },
                                     colors = ButtonDefaults.textButtonColors(
@@ -2192,7 +2298,9 @@ fun NotesListScreen(
                                     snackbarVisible = false
                                     scope.launch {
                                         kotlinx.coroutines.delay(300)
-                                        customSnackbarData = null
+                                        if (snackbarQueue.isNotEmpty()) {
+                                            snackbarQueue.removeAt(0)
+                                        }
                                     }
                                 },
                                 modifier = Modifier.size(36.dp)
@@ -2220,6 +2328,146 @@ fun NotesListScreen(
                                 .background(progressBarColor)
                         )
                     }
+                }
+            }
+        }
+    }
+
+    // ------------------ FLOATING ACTION BUTTON (FAB) & QUICK CAPTURE BAR OVERLAYS ------------------
+    
+    // FAB Overlay
+    AnimatedVisibility(
+        visible = isBottomBarVisible && !isImeVisible,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .navigationBarsPadding()
+            .padding(
+                end = 24.dp, 
+                // When ACTIVE, move the FAB up to make room for the full-width Quick Capture bar
+                bottom = if (currentTab == "ACTIVE") bottomOffset + 88.dp else bottomOffset + 16.dp
+            )
+    ) {
+        if (currentTab == "ACTIVE") {
+            ExtendedFloatingActionButton(
+                text = { 
+                    Text(
+                        text = "New Note",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                    ) 
+                },
+                icon = { 
+                    CanvasCustomIcon(
+                        type = CanvasIconType.EDIT
+                    ) 
+                },
+                onClick = onNavigateToAddNote,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = RoundedCornerShape(20.dp),
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 6.dp,
+                    pressedElevation = 2.dp,
+                    hoveredElevation = 8.dp
+                )
+            )
+        } else if (currentTab == "TRASHED" && notes.isNotEmpty()) {
+            ExtendedFloatingActionButton(
+                text = { 
+                    Text(
+                        text = "Empty",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                    ) 
+                },
+                icon = { 
+                    CanvasCustomIcon(
+                        type = CanvasIconType.DELETE
+                    ) 
+                },
+                onClick = { showEmptyTrashDialog = true },
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                shape = RoundedCornerShape(20.dp),
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 6.dp,
+                    pressedElevation = 2.dp
+                )
+            )
+        }
+    }
+
+    // Quick Capture Bar Overlay
+    AnimatedVisibility(
+        visible = currentTab == "ACTIVE" && (isBottomBarVisible || isImeVisible),
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(
+                start = 16.dp,
+                end = 16.dp, // Full width
+                bottom = if (isImeVisible) 8.dp else (bottomOffset + 12.dp) // Sit above bottom nav when closed, and right above keyboard when open
+            )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+            shadowElevation = 8.dp
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = quickCaptureText,
+                    onValueChange = { quickCaptureText = it },
+                    placeholder = { 
+                        Text(
+                            "Jot a quick note...", 
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), 
+                            fontWeight = FontWeight.Bold
+                        ) 
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
+                    ),
+                    maxLines = 3
+                )
+                IconButton(
+                    onClick = {
+                        if (quickCaptureText.isNotBlank()) {
+                            viewModel.addNote(
+                                title = "",
+                                content = quickCaptureText.trim(),
+                                colorHex = "#2E2E2E",
+                                tags = "",
+                                isLocked = false,
+                                lockPin = null
+                            )
+                            quickCaptureText = ""
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
+                    },
+                    enabled = quickCaptureText.isNotBlank(),
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (quickCaptureText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                ) {
+                    CanvasCustomIcon(
+                        CanvasIconType.TICK, 
+                        modifier = Modifier.size(20.dp), 
+                        tint = if (quickCaptureText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

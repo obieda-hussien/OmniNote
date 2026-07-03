@@ -4,4 +4,6 @@
     <string name="delete_permanent_msg">Are you sure you want to delete this note permanently? This action cannot be undone.</string>
     <string name="delete_permanent_confirm">Delete</string>
     <string name="delete_permanent_cancel">Cancel</string>
+    <string name="empty_trash_title">Empty Trash</string>
+    <string name="empty_trash_msg">Are you sure you want to empty the trash? All trashed notes will be permanently deleted.</string>
 </resources>

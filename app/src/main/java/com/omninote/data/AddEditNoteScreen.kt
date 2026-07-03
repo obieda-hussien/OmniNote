@@ -21,6 +21,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +43,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,7 +59,7 @@ import com.omninote.ui.viewmodels.NotesViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddEditNoteScreen(
     noteId: Int?,
@@ -71,6 +75,32 @@ fun AddEditNoteScreen(
 
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
+    var contentValue by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
+    
+    var undoStack by remember { mutableStateOf(listOf<String>()) }
+    var redoStack by remember { mutableStateOf(listOf<String>()) }
+    
+    LaunchedEffect(content) {
+        if (contentValue.text != content) {
+            try {
+                contentValue = contentValue.copy(
+                    text = content,
+                    selection = androidx.compose.ui.text.TextRange(content.length)
+                )
+            } catch (e: Exception) {
+                contentValue = androidx.compose.ui.text.input.TextFieldValue(
+                    text = content,
+                    selection = androidx.compose.ui.text.TextRange(content.length)
+                )
+            }
+        }
+        delay(600)
+        if (undoStack.isEmpty() || undoStack.last() != content) {
+            val newList = undoStack + content
+            undoStack = if (newList.size > 100) newList.drop(1) else newList
+        }
+    }
+
     var isPinned by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf<String?>(null) }
     var activeTagsList by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -528,11 +558,11 @@ fun AddEditNoteScreen(
 
     Scaffold(
         modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing),
+            .fillMaxSize(),
         containerColor = animatedBackgroundColor,
         topBar = {
             TopAppBar(
+                modifier = Modifier.statusBarsPadding(),
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -555,29 +585,18 @@ fun AddEditNoteScreen(
                     }
                 },
                 actions = {
-                    // Modern Minimalist Mode Switcher (Clean Icon Toggle)
-                    Box(
+                    // Modern Minimalist Mode Switcher (Single Clean Icon Toggle)
+                    IconButton(
+                        onClick = { isPreviewMode = !isPreviewMode },
                         modifier = Modifier
                             .padding(end = 4.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { isPreviewMode = false }) {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.EDIT,
-                                    tint = if (!isPreviewMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            }
-                            IconButton(onClick = { isPreviewMode = true }) {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.VISIBILITY,
-                                    tint = if (isPreviewMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
+                        CanvasCustomIcon(
+                            type = if (isPreviewMode) CanvasIconType.EDIT else CanvasIconType.VISIBILITY,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     }
 
                     // Open Design & Tags tuning Sheet
@@ -589,44 +608,6 @@ fun AddEditNoteScreen(
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
                     ) {
                         CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary)
-                    }
-
-                    IconButton(
-                        onClick = { isPinned = !isPinned },
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
-                    ) {
-                        CanvasCustomIcon(
-                            type = if (isPinned) CanvasIconType.PIN else CanvasIconType.UNPIN,
-                            tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    if (existingNote != null) {
-                        IconButton(
-                            onClick = {
-                                val tagsString = activeTagsList.distinct().joinToString(",")
-                                val noteToTrash = existingNote.copy(
-                                    title = title,
-                                    content = content,
-                                    isPinned = isPinned,
-                                    colorHex = selectedColor,
-                                    tags = tagsString,
-                                    isLocked = isLocked,
-                                    lockPin = lockPin,
-                                    isTrashed = true
-                                )
-                                viewModel.moveToTrash(noteToTrash)
-                                onNavigateBack()
-                            },
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
-                        ) {
-                            CanvasCustomIcon(CanvasIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer)
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -661,11 +642,36 @@ fun AddEditNoteScreen(
                 ) { isPreview ->
                     if (!isPreview) {
                         Box(modifier = Modifier.fillMaxSize()) {
+                            val view = LocalView.current
+                            val customTextToolbar = remember(view, contentValue) {
+                                com.omninote.ui.components.CustomTextToolbar(view) { prefix, suffix ->
+                                    val selStart = contentValue.selection.min
+                                    val selEnd = contentValue.selection.max
+                                    val text = contentValue.text
+                                    if (selStart != selEnd) {
+                                        val before = text.substring(0, selStart)
+                                        val selected = text.substring(selStart, selEnd)
+                                        val after = text.substring(selEnd)
+                                        val newText = before + prefix + selected + suffix + after
+                                        val newSelStart = selStart + prefix.length
+                                        val newSelEnd = newSelStart + selected.length
+                                        contentValue = contentValue.copy(
+                                            text = newText,
+                                            selection = androidx.compose.ui.text.TextRange(newSelStart, newSelEnd)
+                                        )
+                                        content = newText
+                                    }
+                                }
+                            }
+                            val isImeVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+                            CompositionLocalProvider(LocalTextToolbar provides customTextToolbar) {
                             // 1. Distraction-free Writing Area
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(bottom = 96.dp)
+                                    .navigationBarsPadding()
+                                    .imePadding()
+                                    .padding(bottom = if (isImeVisible) 144.dp else 96.dp)
                             ) {
                                 TextField(
                                     value = title,
@@ -690,8 +696,14 @@ fun AddEditNoteScreen(
                                 )
         
                                 TextField(
-                                    value = content,
-                                    onValueChange = { content = it },
+                                    value = contentValue,
+                                    onValueChange = { 
+                                        if (it.text != contentValue.text) {
+                                            redoStack = emptyList()
+                                        }
+                                        contentValue = it
+                                        content = it.text
+                                    },
                                     placeholder = {
                                         Text(
                                             "Write your thoughts here... Use markdown shortcuts below to structure your note beautifully.",
@@ -714,11 +726,14 @@ fun AddEditNoteScreen(
                                         .padding(horizontal = 8.dp)
                                 )
                             }
+                            }
 
                             // 2. High-accessibility Keyboard Format Accessory Dock (Floating)
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
+                                    .navigationBarsPadding()
+                                    .imePadding()
                                     .padding(bottom = 16.dp, start = 12.dp, end = 12.dp)
                             ) {
                                 Surface(
@@ -733,7 +748,6 @@ fun AddEditNoteScreen(
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .navigationBarsPadding()
                                             .padding(top = 8.dp, bottom = 8.dp)
                                     ) {
                                         // Active tags quick indicators row
@@ -782,6 +796,78 @@ fun AddEditNoteScreen(
                                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            // Group 0: Undo/Redo
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                ToolbarIconButton(
+                                                    iconType = CanvasIconType.UNDO,
+                                                    contentDescription = "Undo",
+                                                    tint = if (undoStack.size > 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                                    onClick = {
+                                                        if (undoStack.size > 1) {
+                                                            try {
+                                                                redoStack = redoStack + content
+                                                                val nextUndoStack = undoStack.dropLast(1)
+                                                                undoStack = nextUndoStack
+                                                                val nextText = nextUndoStack.last()
+                                                                content = nextText
+                                                                contentValue = contentValue.copy(
+                                                                    text = nextText,
+                                                                    selection = androidx.compose.ui.text.TextRange(nextText.length)
+                                                                )
+                                                            } catch (e: Exception) {
+                                                                val nextUndoStack = undoStack.dropLast(1)
+                                                                undoStack = nextUndoStack
+                                                                val nextText = nextUndoStack.lastOrNull() ?: ""
+                                                                content = nextText
+                                                                contentValue = androidx.compose.ui.text.input.TextFieldValue(
+                                                                    text = nextText,
+                                                                    selection = androidx.compose.ui.text.TextRange(nextText.length)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                                ToolbarIconButton(
+                                                    iconType = CanvasIconType.REDO,
+                                                    contentDescription = "Redo",
+                                                    tint = if (redoStack.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                                    onClick = {
+                                                        if (redoStack.isNotEmpty()) {
+                                                            try {
+                                                                val nextState = redoStack.last()
+                                                                redoStack = redoStack.dropLast(1)
+                                                                undoStack = undoStack + nextState
+                                                                content = nextState
+                                                                contentValue = contentValue.copy(
+                                                                    text = nextState,
+                                                                    selection = androidx.compose.ui.text.TextRange(nextState.length)
+                                                                )
+                                                            } catch (e: Exception) {
+                                                                val nextState = redoStack.lastOrNull() ?: ""
+                                                                redoStack = redoStack.dropLast(1)
+                                                                undoStack = undoStack + nextState
+                                                                content = nextState
+                                                                contentValue = androidx.compose.ui.text.input.TextFieldValue(
+                                                                    text = nextState,
+                                                                    selection = androidx.compose.ui.text.TextRange(nextState.length)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            }
+
+                                            // Elegant subtle separator
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(1.dp)
+                                                    .height(24.dp)
+                                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                                            )
+
                                             // Group 1: Rich Text Formatting
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
@@ -901,7 +987,7 @@ fun AddEditNoteScreen(
                         }
                     } else {
                     // Preview Mode Visual Port
-                    androidx.compose.foundation.text.selection.SelectionContainer(
+                    Box(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         Column(
@@ -1018,6 +1104,78 @@ fun AddEditNoteScreen(
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
                             CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    // Quick Actions Row (Pin, Delete)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp)
+                                .clickable { isPinned = !isPinned },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = if (isPinned) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CanvasCustomIcon(
+                                    type = if (isPinned) CanvasIconType.PIN else CanvasIconType.UNPIN,
+                                    tint = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (isPinned) "Pinned" else "Pin Note",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (existingNote != null) {
+                            Card(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp)
+                                    .clickable {
+                                        val tagsString = activeTagsList.distinct().joinToString(",")
+                                        val noteToTrash = existingNote.copy(
+                                            title = title,
+                                            content = content,
+                                            isPinned = isPinned,
+                                            colorHex = selectedColor,
+                                            tags = tagsString,
+                                            isLocked = isLocked,
+                                            lockPin = lockPin,
+                                            isTrashed = true
+                                        )
+                                        viewModel.moveToTrash(noteToTrash)
+                                        onNavigateBack()
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    CanvasCustomIcon(CanvasIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Delete",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -1161,13 +1319,22 @@ fun AddEditNoteScreen(
                             ) {
                                 Button(
                                     onClick = {
-                                        val sendIntent: android.content.Intent = android.content.Intent().apply {
-                                            action = android.content.Intent.ACTION_SEND
-                                            putExtra(android.content.Intent.EXTRA_TEXT, "$title\n\n$content")
-                                            type = "text/plain"
+                                        try {
+                                            val safeTitle = if (title.isBlank()) "note" else title.replace(Regex("[^a-zA-Z0-9.-]"), "_")
+                                            val file = java.io.File(context.cacheDir, "$safeTitle.txt")
+                                            file.writeText("$title\n\n$content")
+                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                            val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Export as TXT")
+                                            context.startActivity(shareIntent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            android.widget.Toast.makeText(context, "Export failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                         }
-                                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Export as TXT")
-                                        context.startActivity(shareIntent)
                                     },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp)
@@ -1178,13 +1345,22 @@ fun AddEditNoteScreen(
                                 }
                                 Button(
                                     onClick = {
-                                        val sendIntent: android.content.Intent = android.content.Intent().apply {
-                                            action = android.content.Intent.ACTION_SEND
-                                            putExtra(android.content.Intent.EXTRA_TEXT, "# $title\n\n$content\n\n> Exported from OmniNote")
-                                            type = "text/markdown"
+                                        try {
+                                            val safeTitle = if (title.isBlank()) "note" else title.replace(Regex("[^a-zA-Z0-9.-]"), "_")
+                                            val file = java.io.File(context.cacheDir, "$safeTitle.md")
+                                            file.writeText("# $title\n\n$content\n\n> Exported from OmniNote")
+                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                            val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                type = "text/markdown"
+                                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Export as Markdown")
+                                            context.startActivity(shareIntent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            android.widget.Toast.makeText(context, "Export failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                         }
-                                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Export as Markdown")
-                                        context.startActivity(shareIntent)
                                     },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp)
