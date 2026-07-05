@@ -658,7 +658,7 @@ fun NotesListScreen(
     val pinnedNotesCount = notes.count { it.isPinned }
     val audioNotesCount = notes.count { it.content.contains("[voice:") || it.content.contains("[audio:") }
 
-    val isImeVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    val isImeVisible = WindowInsets.isImeVisible
     val bottomOffset by androidx.compose.animation.core.animateDpAsState(
         targetValue = if (isBottomBarVisible && !isImeVisible) 96.dp else 0.dp,
         animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)

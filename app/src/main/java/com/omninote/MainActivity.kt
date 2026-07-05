@@ -29,6 +29,9 @@ import com.omninote.ui.theme.MyApplicationTheme
 import com.omninote.ui.viewmodels.NotesViewModel
 import com.omninote.ui.viewmodels.NotesViewModelFactory
 
+import androidx.activity.SystemBarStyle
+import android.graphics.Color
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,7 +62,10 @@ class MainActivity : ComponentActivity() {
             intent.action = android.content.Intent.ACTION_MAIN
         }
         
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT)
+        )
         setContent {
             MyApplicationTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {

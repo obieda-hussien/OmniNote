@@ -509,7 +509,9 @@ fun AddEditNoteScreen(
     )
 
     val animatedBackgroundColor by animateColorAsState(
-        targetValue = MaterialTheme.colorScheme.background,
+        targetValue = selectedColor?.let { hex ->
+            try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { MaterialTheme.colorScheme.background }
+        } ?: MaterialTheme.colorScheme.background,
         animationSpec = tween(durationMillis = 300)
     )
 
@@ -560,6 +562,7 @@ fun AddEditNoteScreen(
         modifier = Modifier
             .fillMaxSize(),
         containerColor = animatedBackgroundColor,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 modifier = Modifier.statusBarsPadding(),
@@ -620,6 +623,8 @@ fun AddEditNoteScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .navigationBarsPadding()
+                .imePadding()
         ) {
             Column(
                 modifier = Modifier.fillMaxSize()
@@ -663,15 +668,12 @@ fun AddEditNoteScreen(
                                     }
                                 }
                             }
-                            val isImeVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
                             CompositionLocalProvider(LocalTextToolbar provides customTextToolbar) {
                             // 1. Distraction-free Writing Area
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .navigationBarsPadding()
-                                    .imePadding()
-                                    .padding(bottom = if (isImeVisible) 144.dp else 96.dp)
+                                    .padding(bottom = 72.dp)
                             ) {
                                 TextField(
                                     value = title,
@@ -732,14 +734,12 @@ fun AddEditNoteScreen(
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .navigationBarsPadding()
-                                    .imePadding()
-                                    .padding(bottom = 16.dp, start = 12.dp, end = 12.dp)
+                                    .padding(bottom = 8.dp, start = 12.dp, end = 12.dp)
                             ) {
                                 Surface(
                                     tonalElevation = 8.dp,
                                     shadowElevation = 16.dp,
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
                                     shape = RoundedCornerShape(24.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
