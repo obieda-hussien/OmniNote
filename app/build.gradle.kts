@@ -8,12 +8,12 @@ plugins {
 
 android {
   namespace = "com.omninote"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 35
 
   defaultConfig {
     applicationId = "com.aistudio.omninote.premium"
     minSdk = 24
-    targetSdk = 36
+    targetSdk = 35
     versionCode = 8
     versionName = "8.0"
 
