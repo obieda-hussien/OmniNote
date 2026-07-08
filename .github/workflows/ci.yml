@@ -140,7 +140,7 @@ jobs:
       - name: Run compile + unit tests
         run: |
           ./gradlew --no-daemon \
-            :app:compileDebugKotlin :app:testDebugUnitTest \
+            :app:compileDebugSources :app:testDebugUnitTest \
             --continue
 
       - name: Upload test reports
