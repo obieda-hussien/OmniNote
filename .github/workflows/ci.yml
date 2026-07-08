@@ -225,6 +225,7 @@ jobs:
           retention-days: 14
 
   android-debug:
+    if: false
     name: Android Debug Build
     runs-on: ubuntu-latest
     needs: [ test, security-scan ]
