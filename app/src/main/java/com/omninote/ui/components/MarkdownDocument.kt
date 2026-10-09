@@ -114,19 +114,27 @@ internal fun MarkdownBlock(node: Node, lines: List<String>, onCheckedChange: ((I
         is TableBlock -> {
             val rows = node.children().flatMap { it.children() }
             val columnCount = rows.maxOfOrNull { it.children().size } ?: 0
-            Row(Modifier.horizontalScroll(rememberScrollState())) {
-                repeat(columnCount) { column ->
-                    Column {
-                        rows.forEach { row ->
+            Column(Modifier.horizontalScroll(rememberScrollState())) {
+                rows.forEach { row ->
+                    Row(Modifier.height(IntrinsicSize.Min)) {
+                        repeat(columnCount) { column ->
                             val cell = row.children().getOrNull(column) as? TableCell
-                            Surface(color = if (cell?.isHeader == true) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLow) {
+                            Surface(
+                                modifier = Modifier.width(180.dp).heightIn(min = 52.dp).fillMaxHeight(),
+                                color = if (cell?.isHeader == true) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLow
+                            ) {
                                 InteractiveText(cell?.let { markdownInline(it, primary, secondary) } ?: androidx.compose.ui.text.AnnotatedString(""),
-                                    bodyStyle.copy(fontWeight = if (cell?.isHeader == true) FontWeight.SemiBold else FontWeight.Normal),
-                                    Modifier.width(180.dp).heightIn(min = 52.dp).padding(12.dp))
+                                    bodyStyle.copy(fontWeight = if (cell?.isHeader == true) FontWeight.SemiBold else FontWeight.Normal,
+                                        textAlign = when (cell?.alignment?.name) {
+                                            "CENTER" -> androidx.compose.ui.text.style.TextAlign.Center
+                                            "RIGHT" -> androidx.compose.ui.text.style.TextAlign.End
+                                            else -> androidx.compose.ui.text.style.TextAlign.Start
+                                        }),
+                                    Modifier.padding(12.dp))
                             }
-                            HorizontalDivider()
                         }
                     }
+                    HorizontalDivider()
                 }
             }
         }

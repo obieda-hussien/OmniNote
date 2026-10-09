@@ -75,7 +75,7 @@ class EditorLogicTest {
         assertEquals("bold italic *literal* **code** site", inline.text)
         assertTrue(inline.spanStyles.any { it.item.fontWeight == androidx.compose.ui.text.font.FontWeight.Bold })
         assertTrue(inline.spanStyles.any { it.item.fontStyle == androidx.compose.ui.text.font.FontStyle.Italic })
-        assertEquals("https://example.com/a_(b)", android.net.Uri.decode(inline.getStringAnnotations("URL", 0, inline.length).single().item))
+        assertEquals("https://example.com/a_(b)", inline.getStringAnnotations("URL", 0, inline.length).single().item)
         assertEquals("marked red words [color:#ff0000](literal)",
             parseInlineStyles("==marked== [color:#ff0000](red **words**) `[color:#ff0000](literal)`", Color.Blue, Color.Gray).text)
     }

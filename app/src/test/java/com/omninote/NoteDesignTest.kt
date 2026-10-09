@@ -73,6 +73,23 @@ class NoteDesignTest {
         compose.onNodeWithText("Finish").performScrollTo().assertIsDisplayed().assertHasClickAction()
     }
 
+    @Test fun previewCheckboxKeepsItsOriginalSourceLine() {
+        var clickedLine = -1
+        var checkedValue = false
+        compose.setContent {
+            MyApplicationTheme {
+                com.omninote.ui.components.MarkdownDocumentPreview(
+                    title = "Workout",
+                    rawText = "# Plan\n\nSome text\n\n+ [ ] first task\n+ [X] finished task",
+                    onCheckedChange = { line, checked -> clickedLine = line; checkedValue = checked }
+                )
+            }
+        }
+        compose.waitUntil(10000) { compose.onAllNodes(isToggleable()).fetchSemanticsNodes().size == 2 }
+        compose.onAllNodes(isToggleable())[0].performClick()
+        compose.runOnIdle { assertTrue(clickedLine == 4 && checkedValue) }
+    }
+
     @Test fun searchLayoutAndFilterActionsAreDiscoverable() {
         var cleared = false
         var switched = false

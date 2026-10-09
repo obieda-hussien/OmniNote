@@ -292,6 +292,9 @@ fun AddEditNoteScreen(
         speechRecognizer.setRecognitionListener(recognitionListener)
         onDispose {
             speechRecognizer.destroy()
+            runCatching { mediaRecorder?.stop() }
+            mediaRecorder?.release()
+            mediaRecorder = null
         }
     }
 
@@ -1286,10 +1289,8 @@ fun AddEditNoteScreen(
                         }
                         Button(
                             onClick = {
-                                val trimmed = newTagText.trim()
-                                if (trimmed.isNotEmpty() && !activeTagsList.contains(trimmed)) {
-                                    activeTagsList = activeTagsList + trimmed
-                                }
+                                val entered = newTagText.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                                activeTagsList = (activeTagsList + entered).distinct()
                                 showAddTagDialog = false
                                 newTagText = ""
                             },
@@ -2087,7 +2088,7 @@ fun AddEditNoteScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             PremiumInteractiveCard(title = "AI Voice Dictation", description = "Transcribe and clean up voice notes with Gemini AI", iconType = CanvasIconType.MIC, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; checkAndRequestDictation() }
-                            PremiumInteractiveCard(title = "Text color & highlight", description = "Format with tailored backgrounds & text highlights", iconType = CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; showColorHighlightWizard = true }
+                            PremiumInteractiveCard(title = "Text color & highlight", description = "Format with tailored backgrounds & text highlights", iconType = CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { wizardTextToFormat = contentValue.text.substring(contentValue.selection.min, contentValue.selection.max); showPremiumToolsDialog = false; showColorHighlightWizard = true }
                             PremiumInteractiveCard(title = "Insert table", description = "Insert customized grid spreadsheets dynamically", iconType = CanvasIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
                             PremiumInteractiveCard(title = "Attach file", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = CanvasIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
                         }
