@@ -130,7 +130,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: "21" # Robolectric Android 16 requires JDK 21
           cache: gradle
 
       - name: Set up Android SDK
