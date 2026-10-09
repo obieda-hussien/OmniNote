@@ -94,6 +94,11 @@ class NotesViewModel(private val repository: NoteRepository) : ViewModel() {
     val trashedNotes: StateFlow<List<NoteEntity>> = repository.trashedNotes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    suspend fun createQuickNote(content: String): NoteEntity = withContext(NonCancellable) {
+        val note = NoteEntity(title = "", content = content)
+        note.copy(id = repository.insert(note).toInt())
+    }
+
     fun addNote(title: String, content: String, colorHex: String?, tags: String, isLocked: Boolean, lockPin: String?) {
         viewModelScope.launch {
             repository.insert(NoteEntity(title = title, content = content, colorHex = colorHex, tags = tags, isLocked = isLocked, lockPin = lockPin))

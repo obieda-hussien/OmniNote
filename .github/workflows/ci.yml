@@ -148,6 +148,19 @@ jobs:
             :app:compileDebugKotlin :app:testDebugUnitTest \
             --continue
 
+      - name: Summarize test results
+        if: always()
+        run: |
+          python3 - <<'PYTEST'
+          import pathlib, xml.etree.ElementTree as ET
+          for path in pathlib.Path('app/build/test-results').rglob('TEST-*.xml'):
+              root = ET.parse(path).getroot()
+              print(f"{root.get('name')}: {root.get('tests')} tests, {root.get('failures')} failures")
+              for case in root.findall('testcase'):
+                  for failure in case.findall('failure'):
+                      print(f"FAILED {case.get('name')}: {failure.get('message')}")
+          PYTEST
+
       - name: Upload test reports
         if: always()
         continue-on-error: true

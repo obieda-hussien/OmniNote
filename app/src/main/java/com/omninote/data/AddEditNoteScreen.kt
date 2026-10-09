@@ -107,7 +107,13 @@ fun AddEditNoteScreen(
             runCatching { viewModel.saveDraft(draft) }
         }
     }
-    LaunchedEffect(draft.error) { draft.error?.let { snackbar.showSnackbar(it) } }
+    LaunchedEffect(draft.error) {
+        draft.error?.let {
+            if (snackbar.showSnackbar(it, actionLabel = "Retry", duration = SnackbarDuration.Indefinite) == SnackbarResult.ActionPerformed) {
+                if (draft.loaded) viewModel.persistDraft(draft) else viewModel.loadDraft(draft)
+            }
+        }
+    }
     DisposableEffect(lifecycleOwner, draft) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) viewModel.persistDraft(draft)

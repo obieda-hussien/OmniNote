@@ -46,7 +46,14 @@ fun parseInlineStyles(text: String, primaryColor: Color, onSurfaceVariant: Color
     val marker = Regex("""\[(color|bg):(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})\]\(|==|`+""")
     val builder = AnnotatedString.Builder()
     fun standard(source: String) {
-        if (source.isNotEmpty()) builder.append(markdownInline(NoteMarkdownParser.parse(source), primaryColor, onSurfaceVariant))
+        if (source.isEmpty()) return
+        val leading = source.takeWhile { it.isWhitespace() }
+        val core = source.trim()
+        builder.append(leading)
+        if (core.isNotEmpty()) {
+            builder.append(markdownInline(NoteMarkdownParser.parse(core), primaryColor, onSurfaceVariant))
+            builder.append(source.takeLastWhile { it.isWhitespace() })
+        }
     }
     var cursor = 0
     var plainStart = 0

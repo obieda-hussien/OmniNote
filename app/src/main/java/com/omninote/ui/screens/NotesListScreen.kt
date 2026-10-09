@@ -69,6 +69,11 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.omninote.ui.components.libraryNotes
+import com.omninote.ui.components.NoteMarkdownParser
 
 /**
  * Custom helper function to perform search-result query highlighting inside Note view cards
@@ -419,7 +424,7 @@ fun NotesListScreen(
     val sharedPrefs = remember { context.getSharedPreferences("OmniNotePrefs", android.content.Context.MODE_PRIVATE) }
 
     // 3-tab smooth ViewPager
-    val initialPage = remember { sharedPrefs.getInt("lastTab", 0) }
+    val initialPage = remember { sharedPrefs.getInt("lastTab", 0).coerceIn(0, 2) }
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 3 })
 
     LaunchedEffect(pagerState.currentPage) {
@@ -438,8 +443,8 @@ fun NotesListScreen(
         else -> trashedNotes
     }
 
-    var selectedTag by remember { mutableStateOf<String?>(null) }
-    var searchQuery by remember { mutableStateOf("") }
+    var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
 
     // Configuration states (Persisted)
     var sortBy by remember { mutableStateOf(sharedPrefs.getString("sortBy", "newest") ?: "newest") }
@@ -516,7 +521,8 @@ fun NotesListScreen(
     var showQuickActionsForNote by remember { mutableStateOf<NoteEntity?>(null) }
     var showSortBottomSheet by remember { mutableStateOf(false) }
     var showStatsDashboard by remember { mutableStateOf(false) }
-    var quickCaptureText by remember { mutableStateOf("") }
+    var quickCaptureText by rememberSaveable { mutableStateOf("") }
+    var quickCaptureSaving by remember { mutableStateOf(false) }
 
     // Lock prompt state
     var noteToUnlock by remember { mutableStateOf<NoteEntity?>(null) }
@@ -561,46 +567,7 @@ fun NotesListScreen(
 
     // Filter AND Sort notes dynamically
     val filteredAndSortedNotes = remember(notes, selectedTag, searchQuery, sortBy, filterPinnedOnly) {
-        var list = notes
-
-        // 1. Filter by tag
-        if (selectedTag != null) {
-            list = list.filter { note ->
-                note.tags.split(",")
-                    .map { it.trim() }
-                    .contains(selectedTag)
-            }
-        }
-
-        // 2. Filter by search box
-        if (searchQuery.isNotBlank()) {
-            val q = searchQuery.trim().lowercase()
-            list = list.filter { note ->
-                note.title.lowercase().contains(q) || note.content.lowercase().contains(q)
-            }
-        }
-
-        // 3. Filter by Pinned only
-        if (filterPinnedOnly) {
-            list = list.filter { it.isPinned }
-        }
-
-        // 4. Sort notes list
-        list = when (sortBy) {
-            "oldest" -> list.sortedBy { it.timestamp }
-            "a-z" -> list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title.ifBlank { "zzz" } })
-            "z-a" -> list.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.title.ifBlank { "aaa" } })
-            "color" -> list.sortedBy { it.colorHex ?: "" }
-            "pin" -> list.sortedByDescending { it.isPinned }
-            else -> list.sortedByDescending { it.timestamp } // "newest"
-        }
-
-        // Keep pinned notes always at the top by default unless custom alphabetical sorts are activated
-        if (sortBy != "oldest" && sortBy != "a-z" && sortBy != "z-a") {
-            list = list.sortedByDescending { it.isPinned }
-        }
-
-        list
+        libraryNotes(notes, selectedTag, searchQuery, sortBy, filterPinnedOnly)
     }
 
     // Statistical variables for dashboard metrics
@@ -889,46 +856,7 @@ fun NotesListScreen(
 
                 // Filter AND Sort notes dynamically per page
                 val pageFilteredAndSortedNotes = remember(pageNotes, selectedTag, searchQuery, sortBy, filterPinnedOnly) {
-                    var list = pageNotes
-
-                    // 1. Filter by tag (Only apply to Active and Archived tabs, ignore for Trash)
-                    if (selectedTag != null && page != 2) {
-                        list = list.filter { note ->
-                            note.tags.split(",")
-                                .map { it.trim() }
-                                .contains(selectedTag)
-                        }
-                    }
-
-                    // 2. Filter by search box
-                    if (searchQuery.isNotBlank()) {
-                        val q = searchQuery.trim().lowercase()
-                        list = list.filter { note ->
-                            note.title.lowercase().contains(q) || note.content.lowercase().contains(q)
-                        }
-                    }
-
-                    // 3. Filter by Pinned only (Only apply to Active and Archived tabs, ignore for Trash)
-                    if (filterPinnedOnly && page != 2) {
-                        list = list.filter { it.isPinned }
-                    }
-
-                    // 4. Sort notes list
-                    list = when (sortBy) {
-                        "oldest" -> list.sortedBy { it.timestamp }
-                        "a-z" -> list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title.ifBlank { "zzz" } })
-                        "z-a" -> list.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.title.ifBlank { "aaa" } })
-                        "color" -> list.sortedBy { it.colorHex ?: "" }
-                        "pin" -> list.sortedByDescending { it.isPinned }
-                        else -> list.sortedByDescending { it.timestamp } // "newest"
-                    }
-
-                    // Keep pinned notes always at the top by default unless custom alphabetical sorts are activated
-                    if (sortBy != "oldest" && sortBy != "a-z" && sortBy != "z-a") {
-                        list = list.sortedByDescending { it.isPinned }
-                    }
-
-                    list
+                    libraryNotes(pageNotes, selectedTag, searchQuery, sortBy, filterPinnedOnly)
                 }
 
                 if (pageFilteredAndSortedNotes.isEmpty()) {
@@ -1634,7 +1562,7 @@ fun NotesListScreen(
                 }
 
                 // Reordering Section (if visible)
-                val currentIndex = filteredAndSortedNotes.indexOfFirst { it.id == note.id }
+                val currentIndex = if (sortBy == "newest") filteredAndSortedNotes.indexOfFirst { it.id == note.id } else -1
                 if (currentIndex != -1) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("MANUAL REORDERING", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -2250,22 +2178,23 @@ fun NotesListScreen(
                 )
                 IconButton(
                     onClick = {
-                        if (quickCaptureText.isNotBlank()) {
-                            viewModel.addNote(
-                                title = "",
-                                content = quickCaptureText.trim(),
-                                colorHex = null,
-                                tags = "",
-                                isLocked = false,
-                                lockPin = null
-                            )
-                            quickCaptureText = ""
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (quickCaptureText.isNotBlank() && !quickCaptureSaving) {
+                            val captured = quickCaptureText.trim()
+                            quickCaptureSaving = true
+                            scope.launch {
+                                try {
+                                    viewModel.createQuickNote(captured)
+                                    if (quickCaptureText.trim() == captured) quickCaptureText = ""
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar("Couldn't save. Try again.")
+                                } finally { quickCaptureSaving = false }
+                            }
                         }
                     },
-                    enabled = quickCaptureText.isNotBlank(),
+                    enabled = quickCaptureText.isNotBlank() && !quickCaptureSaving,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(if (quickCaptureText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
                 ) {
@@ -2332,16 +2261,16 @@ fun NoteCard(
     )
 
     // Calculate reading time
-    val words = note.content.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+    val words = remember(note.content) { note.content.split(Regex("\\s+")).count { it.isNotBlank() } }
     val readTimeChars = if (words > 10) "${words / 200 + 1} min read" else "$words words"
 
     // Analyze attachments/metadata inside note's content to decorate card beautifully
     val hasVoice = note.content.contains("[voice:") || note.content.contains("[audio:")
     val hasFile = note.content.contains("[file:")
-    val hasImage = note.content.contains("![Image](")
+    val hasImage = note.content.contains("![")
     val hasTable = note.content.contains("|") && note.content.contains("---|")
     val hasCode = note.content.contains("```")
-    val hasChecklist = note.content.contains("- [ ]") || note.content.contains("- [x]")
+    val hasChecklist = remember(note.content) { Regex("""(?m)^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]""").containsMatchIn(note.content) }
 
     Card(
         modifier = modifier
@@ -2428,17 +2357,8 @@ fun NoteCard(
 
                 // Content Preview block
                 if (note.content.isNotBlank()) {
-                    // Strips all markdown image tokens/voice links for clean preview
-                    val cleanContent = remember(note.content) {
-                        note.content
-                            .replace(Regex("""!\[.*?\]\(.*?\)"""), "[Image]")
-                            .replace(Regex("""\[voice.*?\]\(.*?\)"""), "[Voice clip]")
-                            .replace(Regex("""\[file.*?\]\(.*?\)"""), "[Attachment]")
-                            .replace(Regex("""\[color.*?\]\((.*?)\)"""), "$1")
-
-                            .replace(Regex("""\[bg.*?\]\((.*?)\)"""), "$1")
-                            .replace(Regex("""[#*`>]"""), "")
-                            .trim()
+                    val cleanContent by produceState("", note.content) {
+                        value = withContext(Dispatchers.Default) { NoteMarkdownParser.preview(note.content) }
                     }
 
                     Text(

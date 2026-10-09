@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -82,15 +83,16 @@ class MainActivity : ComponentActivity() {
                         isFirstRun.value = false
                     }
 
-                    val startDestination = if (initialSharedText != null || initialSharedUris != null) {
-                        Screen.AddEditNote.createRoute(null)
-                    } else {
-                        Screen.Home.route
+                    LaunchedEffect(viewModel) {
+                        if ((viewModel.sharedText != null || viewModel.sharedUris != null) &&
+                            navController.currentDestination?.route == Screen.Home.route) {
+                            navController.navigate(Screen.AddEditNote.createRoute(null)) { launchSingleTop = true }
+                        }
                     }
 
                     NavHost(
                         navController = navController,
-                        startDestination = startDestination,
+                        startDestination = Screen.Home.route,
                         enterTransition = {
                             slideIntoContainer(
                                 AnimatedContentTransitionScope.SlideDirection.Start,
@@ -148,7 +150,9 @@ class MainActivity : ComponentActivity() {
                                 noteId = noteId,
                                 viewModel = viewModel,
                                 onNavigateBack = {
-                                    navController.popBackStack()
+                                    if (!navController.popBackStack()) {
+                                        navController.navigate(Screen.Home.route) { launchSingleTop = true }
+                                    }
                                 }
                             )
                         }

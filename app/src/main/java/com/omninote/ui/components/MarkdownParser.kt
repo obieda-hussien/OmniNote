@@ -13,6 +13,31 @@ object NoteMarkdownParser {
         .includeSourceSpans(IncludeSourceSpans.BLOCKS_AND_INLINES)
         .build()
     fun parse(source: String): Node = parser.parse(source)
+    fun preview(source: String): String {
+        val result = StringBuilder()
+        fun append(node: Node) {
+            when (node) {
+                is org.commonmark.node.Image -> result.append("[Image]")
+                is org.commonmark.node.Link -> {
+                    val label = node.children().filterIsInstance<org.commonmark.node.Text>().joinToString("") { it.literal }
+                    when {
+                        label.startsWith("voice") || label.startsWith("audio") -> result.append("[Voice clip]")
+                        label.startsWith("file:") -> result.append("[Attachment]")
+                        else -> node.children().forEach { append(it) }
+                    }
+                }
+                is org.commonmark.node.Text -> result.append(node.literal)
+                is org.commonmark.node.Code -> result.append(node.literal)
+                is org.commonmark.node.FencedCodeBlock -> result.append(node.literal)
+                is org.commonmark.node.IndentedCodeBlock -> result.append(node.literal)
+                is org.commonmark.node.SoftLineBreak, is org.commonmark.node.HardLineBreak -> result.append('\n')
+                else -> node.children().forEach { append(it) }
+            }
+            if (node is org.commonmark.node.Paragraph || node is org.commonmark.node.Heading) result.append('\n')
+        }
+        append(parse(source.take(8000)))
+        return result.toString().trim().take(1000)
+    }
 }
 
 internal fun Node.children(): List<Node> = buildList {

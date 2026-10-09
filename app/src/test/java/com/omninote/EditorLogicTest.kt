@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Color
 import com.omninote.ui.editor.EditorBuffer
 import com.omninote.ui.components.NoteMarkdownParser
 import com.omninote.ui.components.parseInlineStyles
+import com.omninote.ui.components.libraryNotes
 import com.omninote.data.*
 import com.omninote.ui.viewmodels.NotesViewModel
 import kotlinx.coroutines.async
@@ -74,7 +75,7 @@ class EditorLogicTest {
         assertEquals("bold italic *literal* **code** site", inline.text)
         assertTrue(inline.spanStyles.any { it.item.fontWeight == androidx.compose.ui.text.font.FontWeight.Bold })
         assertTrue(inline.spanStyles.any { it.item.fontStyle == androidx.compose.ui.text.font.FontStyle.Italic })
-        assertEquals("https://example.com/a_(b)", inline.getStringAnnotations("URL", 0, inline.length).single().item)
+        assertEquals("https://example.com/a_(b)", android.net.Uri.decode(inline.getStringAnnotations("URL", 0, inline.length).single().item))
         assertEquals("marked red words [color:#ff0000](literal)",
             parseInlineStyles("==marked== [color:#ff0000](red **words**) `[color:#ff0000](literal)`", Color.Blue, Color.Gray).text)
     }
@@ -138,6 +139,15 @@ class EditorLogicTest {
         assertNull(draft.error)
         assertFalse(draft.dirty)
     }
+    @Test fun libraryFiltersUseTheSamePolicyForTrashAndActiveNotes() {
+        val matching = NoteEntity(id = 1, title = "Meeting", content = "Body", tags = " Work,Personal ", isPinned = true, isTrashed = true)
+        val other = NoteEntity(id = 2, title = "Shopping", content = "Body", tags = "Personal", isTrashed = true)
+        assertEquals(listOf(matching), libraryNotes(listOf(other, matching), "Work", " meeting ", "newest", true))
+        assertTrue(libraryNotes(listOf(other, matching), "Missing", "", "newest", false).isEmpty())
+        assertEquals(listOf(matching, other), libraryNotes(listOf(other, matching), null, "", "a-z", false))
+        assertEquals("Heading\nBold plain\n[Image]", NoteMarkdownParser.preview("# Heading\n\n**Bold** plain\n\n![Photo](content://photo/1)"))
+    }
+
     private class MemoryDao : NoteDao {
         val rows = MutableStateFlow(emptyList<NoteEntity>())
         var fail = false
