@@ -82,6 +82,9 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
+  implementation("org.commonmark:commonmark:0.24.0")
+  implementation("org.commonmark:commonmark-ext-gfm-tables:0.24.0")
+  implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0")
   
   // Google AdMob (Kept based on your request for future use)
   // implementation("com.google.android.gms:play-services-ads:23.0.0")

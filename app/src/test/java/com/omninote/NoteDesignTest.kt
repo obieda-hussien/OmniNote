@@ -6,6 +6,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.omninote.ui.components.NoteLibraryHeader
@@ -23,6 +26,21 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], qualifiers = "w411dp-h891dp")
 class NoteDesignTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun semanticModifiersKeepEveryToolbarGlyphAtItsIntendedSize() {
+        compose.setContent {
+            MyApplicationTheme {
+                androidx.compose.foundation.layout.Row {
+                    com.omninote.ui.screens.CanvasCustomIcon(com.omninote.ui.screens.CanvasIconType.BACK,
+                        androidx.compose.ui.Modifier.semantics { contentDescription = "Back glyph" })
+                    com.omninote.ui.screens.CanvasCustomIcon(com.omninote.ui.screens.CanvasIconType.VISIBILITY,
+                        androidx.compose.ui.Modifier.semantics { contentDescription = "Preview glyph" })
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("Back glyph").assertWidthIsEqualTo(24.dp).assertHeightIsEqualTo(24.dp)
+        compose.onNodeWithContentDescription("Preview glyph").assertWidthIsEqualTo(24.dp).assertHeightIsEqualTo(24.dp)
+    }
 
     @Test fun customNoteColoursKeepReadableTextInBothThemes() {
         val contrasts = mutableListOf<Float>()

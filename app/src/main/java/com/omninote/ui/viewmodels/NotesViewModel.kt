@@ -11,6 +11,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
+import com.omninote.ui.editor.EditorDraft
 
 sealed class NoteEvent {
     data class Trashed(val note: NoteEntity, val message: String = "Moved to Trash") : NoteEvent()
@@ -20,6 +24,60 @@ sealed class NoteEvent {
 }
 
 class NotesViewModel(private val repository: NoteRepository) : ViewModel() {
+
+    private var openDraft: EditorDraft? = null
+    fun editorDraft(id: Int?): EditorDraft = openDraft?.takeIf { it.requestedId == id && !it.discarded }
+        ?: EditorDraft(id).also { openDraft = it }
+
+    suspend fun loadDraft(draft: EditorDraft) {
+        if (draft.loaded) return
+        try {
+            val note = repository.getNoteById(requireNotNull(draft.requestedId))
+                ?: error("This note is no longer available")
+            draft.initialize(note)
+            draft.error = null
+        } catch (e: Exception) {
+            draft.error = e.message ?: "Could not open this note"
+        }
+    }
+
+    // NonCancellable keeps an in-flight database write alive if the screen rotates.
+    suspend fun saveDraft(draft: EditorDraft): NoteEntity? = withContext(NonCancellable) {
+        draft.saveMutex.withLock {
+            if (!draft.loaded || draft.discarded || !draft.dirty) return@withLock draft.base
+            draft.saving = true
+            try {
+                val snapshot = draft.snapshot().copy(timestamp = System.currentTimeMillis())
+                val id = repository.insert(snapshot).toInt()
+                val saved = snapshot.copy(id = id)
+                draft.base = saved
+                draft.saved = saved
+                draft.error = null
+                saved
+            } catch (e: Exception) {
+                draft.error = "Couldn't save. Your changes are still here. Try again."
+                throw e
+            } finally { draft.saving = false }
+        }
+    }
+
+    fun persistDraft(draft: EditorDraft) {
+        viewModelScope.launch { runCatching { saveDraft(draft) } }
+    }
+
+    suspend fun trashDraft(draft: EditorDraft) = withContext(NonCancellable) {
+        draft.saveMutex.withLock {
+            val note = draft.snapshot().copy(isTrashed = true, timestamp = System.currentTimeMillis())
+            repository.insert(note)
+            draft.discarded = true
+            _noteEvent.emit(NoteEvent.Trashed(note))
+        }
+    }
+
+    fun closeDraft(draft: EditorDraft) {
+        draft.discarded = true
+        if (openDraft === draft) openDraft = null
+    }
 
     private val _noteEvent = MutableSharedFlow<NoteEvent>()
     val noteEvent: SharedFlow<NoteEvent> = _noteEvent.asSharedFlow()
@@ -118,3 +176,4 @@ class NotesViewModel(private val repository: NoteRepository) : ViewModel() {
         sharedUris = null
     }
 }
+
