@@ -48,6 +48,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalContext
@@ -71,6 +73,8 @@ fun AddEditNoteScreen(
     viewModel: NotesViewModel,
     onNavigateBack: () -> Unit
 ) {
+    val density = LocalDensity.current
+    var editorDockHeight by remember { mutableStateOf(72.dp) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val allNotes by viewModel.allNotes.collectAsStateWithLifecycle()
@@ -677,7 +681,7 @@ fun AddEditNoteScreen(
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(bottom = 72.dp)
+                                    .padding(bottom = editorDockHeight + 16.dp)
                             ) {
                                 TextField(
                                     value = title,
@@ -747,6 +751,7 @@ fun AddEditNoteScreen(
                                     shape = RoundedCornerShape(24.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .onSizeChanged { size -> editorDockHeight = with(density) { size.height.toDp() } }
                                         .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
                                 ) {
                                     Column(

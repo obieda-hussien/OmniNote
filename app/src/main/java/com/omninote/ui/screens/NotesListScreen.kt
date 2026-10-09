@@ -464,37 +464,6 @@ fun NotesListScreen(
     val gridState2 = rememberLazyStaggeredGridState()
     val listState2 = rememberLazyListState()
 
-    var isTopHeaderVisible by remember { mutableStateOf(true) }
-    var isBottomBarVisible by remember { mutableStateOf(true) }
-
-    val isCurrentlyAtTop = remember {
-        derivedStateOf {
-            when (pagerState.currentPage) {
-                0 -> {
-                    if (isGridView) {
-                        gridState0.firstVisibleItemIndex == 0 && gridState0.firstVisibleItemScrollOffset == 0
-                    } else {
-                        listState0.firstVisibleItemIndex == 0 && listState0.firstVisibleItemScrollOffset == 0
-                    }
-                }
-                1 -> {
-                    if (isGridView) {
-                        gridState1.firstVisibleItemIndex == 0 && gridState1.firstVisibleItemScrollOffset == 0
-                    } else {
-                        listState1.firstVisibleItemIndex == 0 && listState1.firstVisibleItemScrollOffset == 0
-                    }
-                }
-                else -> {
-                    if (isGridView) {
-                        gridState2.firstVisibleItemIndex == 0 && gridState2.firstVisibleItemScrollOffset == 0
-                    } else {
-                        listState2.firstVisibleItemIndex == 0 && listState2.firstVisibleItemScrollOffset == 0
-                    }
-                }
-            }
-        }
-    }
-
     LaunchedEffect(Unit) {
         viewModel.noteEvent.collect { event ->
             when (event) {
@@ -538,32 +507,7 @@ fun NotesListScreen(
         }
     }
 
-    LaunchedEffect(isCurrentlyAtTop.value) {
-        if (isCurrentlyAtTop.value) {
-            isTopHeaderVisible = true
-        }
-    }
 
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                val delta = available.y
-                if (delta < -12f) { // Scrolling down -> hide
-                    isBottomBarVisible = true
-                    isTopHeaderVisible = false
-                } else if (delta > 12f) { // Scrolling up -> show bottom bar, only show header if we are close to top
-                    isBottomBarVisible = true
-                    if (isCurrentlyAtTop.value) {
-                        isTopHeaderVisible = true
-                    }
-                }
-                return Offset.Zero
-            }
-        }
-    }
 
     // Snackbar state for undo
     val scope = rememberCoroutineScope()
@@ -666,7 +610,7 @@ fun NotesListScreen(
 
     val isImeVisible = WindowInsets.isImeVisible
     val bottomOffset by androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (isBottomBarVisible && !isImeVisible) 96.dp else 0.dp,
+        targetValue = if (!isImeVisible) 96.dp else 0.dp,
         animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
     )
 
@@ -764,7 +708,7 @@ fun NotesListScreen(
         },
         bottomBar = {
             AnimatedVisibility(
-                visible = isBottomBarVisible && !isImeVisible,
+                visible = !isImeVisible,
                 enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
                 exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
             ) {
@@ -843,7 +787,6 @@ fun NotesListScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .nestedScroll(nestedScrollConnection)
                 .padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
         ) {
             // Dynamic Tag / Category filter carousel
@@ -2200,7 +2143,7 @@ fun NotesListScreen(
 
     // FAB Overlay
     AnimatedVisibility(
-        visible = isBottomBarVisible && !isImeVisible,
+        visible = !isImeVisible,
         enter = fadeIn() + scaleIn(),
         exit = fadeOut() + scaleOut(),
         modifier = Modifier
@@ -2262,7 +2205,7 @@ fun NotesListScreen(
 
     // Quick Capture Bar Overlay
     AnimatedVisibility(
-        visible = currentTab == "ACTIVE" && (isBottomBarVisible || isImeVisible),
+        visible = currentTab == "ACTIVE",
         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
         exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
         modifier = Modifier
