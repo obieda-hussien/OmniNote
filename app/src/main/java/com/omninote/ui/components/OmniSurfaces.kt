@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** Custom note colours are accents; reading surfaces retain theme contrast. */
@@ -51,12 +50,14 @@ fun OmniConfirmDialog(
     title: @Composable () -> Unit,
     text: @Composable () -> Unit,
     confirmButton: @Composable () -> Unit,
-    dismissButton: @Composable (() -> Unit)? = null
+    dismissButton: @Composable (() -> Unit)? = null,
+    icon: @Composable (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
         title = title,
         text = text,
+        icon = icon,
         confirmButton = confirmButton,
         dismissButton = dismissButton,
         shape = RoundedCornerShape(28.dp),

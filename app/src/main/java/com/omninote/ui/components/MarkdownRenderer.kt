@@ -32,6 +32,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -569,16 +571,18 @@ fun ImageLayout(uriString: String, description: String) {
     }
 
     if (showDialog) {
+        val previewHeight = LocalConfiguration.current.screenHeightDp.dp * 0.85f
         androidx.compose.ui.window.Dialog(onDismissRequest = { showDialog = false }) {
             androidx.compose.material3.Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp)),
+                    .heightIn(max = previewHeight)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
                 color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
+                tonalElevation = 0.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Row(
@@ -1202,7 +1206,7 @@ fun AttachmentOptionsDialog(
     val mimeType = remember(uriString, filename) { getMimeType(uriString, filename) }
     val isApk = remember(filename) { filename.lowercase().endsWith(".apk") }
 
-    AlertDialog(
+    OmniConfirmDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(
@@ -1216,7 +1220,9 @@ fun AttachmentOptionsDialog(
         },
         title = {
             Text(
-                text = filename.ifEmpty { "Attachment Options" },
+                text = filename.ifEmpty { "Attachment options" },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
@@ -1299,7 +1305,7 @@ fun AttachmentOptionsDialog(
                 ) {
                     Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isApk) "Open as File (View Contents)" else "Open in External App", fontWeight = FontWeight.Bold)
+                    Text(if (isApk) "Open as File (View Contents)" else "Open with another app", fontWeight = FontWeight.Bold)
                 }
 
                 OutlinedButton(
@@ -1332,7 +1338,7 @@ fun AttachmentOptionsDialog(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Share/Send to App", fontWeight = FontWeight.Bold)
+                    Text("Share attachment", fontWeight = FontWeight.Bold)
                 }
 
                 TextButton(
@@ -1345,3 +1351,4 @@ fun AttachmentOptionsDialog(
         }
     )
 }
+
