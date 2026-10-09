@@ -32,6 +32,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import com.omninote.ui.components.OmniSheet
+import com.omninote.ui.components.OmniConfirmDialog
+import com.omninote.ui.components.noteSurface
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,10 +81,10 @@ fun AddEditNoteScreen(
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var contentValue by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
-    
+
     var undoStack by remember { mutableStateOf(listOf<String>()) }
     var redoStack by remember { mutableStateOf(listOf<String>()) }
-    
+
     LaunchedEffect(content) {
         if (contentValue.text != content) {
             try {
@@ -112,7 +117,7 @@ fun AddEditNoteScreen(
 
     // Bottom Sheet State for Note Settings (Vibe, Tags, Analytics)
     var showSettingsSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var isInitialized by remember(noteId) { mutableStateOf(false) }
 
@@ -146,7 +151,7 @@ fun AddEditNoteScreen(
             uris.forEach { uri ->
                 val mimeType = context.contentResolver.getType(uri) ?: ""
                 val internalUri = copyUriToInternalStorage(context, uri, "shared_file")
-                
+
                 if (mimeType.startsWith("image/")) {
                      content += "\n![Shared Image]($internalUri)\n"
                 } else {
@@ -160,7 +165,7 @@ fun AddEditNoteScreen(
                              }
                          }
                      } catch (e: Exception) {}
-                     
+
                      if (mimeType.startsWith("audio/")) {
                          content += "\n[voice:$internalUri]($internalUri)\n"
                      } else {
@@ -211,7 +216,7 @@ fun AddEditNoteScreen(
                         }
                     }
                 } catch (e: Exception) {}
-                
+
                 val internalUri = copyUriToInternalStorage(context, it, displayFileName)
                 content += "\n[file:$displayFileName]($internalUri)\n"
             }
@@ -324,7 +329,7 @@ fun AddEditNoteScreen(
     fun localRefineText(text: String): String {
         var refined = text.trim()
         if (refined.isEmpty()) return ""
-        
+
         // Replace spoken punctuation words in both Arabic and English
         val replacements = mapOf(
             "نقطة" to ".",
@@ -338,18 +343,18 @@ fun AddEditNoteScreen(
             "new line" to "\n",
             "next line" to "\n"
         )
-        
+
         for ((key, value) in replacements) {
             refined = refined.replace(Regex("(?i)\\b$key\\b"), value)
         }
-        
+
         // Capitalize English sentences
         refined = refined.split(Regex("(?<=[.!?\\n])\\s+"))
             .map { sentence ->
                 sentence.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
             }
             .joinToString(" ")
-            
+
         // Clean up spacing
         refined = refined
             .replace(Regex(" +"), " ")
@@ -360,7 +365,7 @@ fun AddEditNoteScreen(
             .replace(" ؟", "؟")
             .replace("\n ", "\n")
             .replace(" \n", "\n")
-            
+
         return refined.trim()
     }
 
@@ -369,29 +374,29 @@ fun AddEditNoteScreen(
         if (apiKey.isBlank() || apiKey == "YOUR_API_KEY_HERE" || apiKey.startsWith("YOUR_")) {
             return@withContext "Error: Please configure your Gemini API Key in the Secrets panel."
         }
-        
+
         val client = okhttp3.OkHttpClient.Builder()
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .build()
-            
+
         val mediaType = "application/json; charset=utf-8".toMediaType()
-        
+
         val contentObj = JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
         val requestBodyJson = JSONObject()
             .put("contents", JSONArray().put(contentObj))
             .toString()
-            
+
         val request = okhttp3.Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey")
             .post(requestBodyJson.toRequestBody(mediaType))
             .build()
-            
+
         try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext "Error: API call failed (${response.code})"
                 val responseBody = response.body?.string() ?: return@withContext "Error: Empty response"
-                
+
                 val jsonResponse = JSONObject(responseBody)
                 val candidates = jsonResponse.getJSONArray("candidates")
                 val firstCandidate = candidates.getJSONObject(0)
@@ -509,10 +514,8 @@ fun AddEditNoteScreen(
     )
 
     val animatedBackgroundColor by animateColorAsState(
-        targetValue = selectedColor?.let { hex ->
-            try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { MaterialTheme.colorScheme.background }
-        } ?: MaterialTheme.colorScheme.background,
-        animationSpec = tween(durationMillis = 300)
+        targetValue = noteSurface(selectedColor, editor = true),
+        animationSpec = tween(180), label = "EditorColor"
     )
 
     val saveAndGoBack = {
@@ -573,7 +576,7 @@ fun AddEditNoteScreen(
                     ) {
                         Text(
                             text = if (existingNote != null) "Edit Note" else "New Note",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold)
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                         )
                     }
                 },
@@ -582,9 +585,9 @@ fun AddEditNoteScreen(
                         onClick = { saveAndGoBack() },
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.BACK)
+                        CanvasCustomIcon(CanvasIconType.BACK, modifier = Modifier.semantics { contentDescription = "Save and go back" })
                     }
                 },
                 actions = {
@@ -594,10 +597,11 @@ fun AddEditNoteScreen(
                         modifier = Modifier
                             .padding(end = 4.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
                         CanvasCustomIcon(
                             type = if (isPreviewMode) CanvasIconType.EDIT else CanvasIconType.VISIBILITY,
+                            modifier = Modifier.semantics { contentDescription = if (isPreviewMode) "Edit note" else "Preview note" },
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -608,9 +612,9 @@ fun AddEditNoteScreen(
                         modifier = Modifier
                             .padding(end = 4.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary)
+                        CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.semantics { contentDescription = "Note options" })
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -634,13 +638,13 @@ fun AddEditNoteScreen(
                     label = "EditorPreviewTransition",
                     transitionSpec = {
                         (slideInHorizontally(
-                            initialOffsetX = { fullWidth -> if (targetState) fullWidth else -fullWidth },
-                            animationSpec = tween(500, easing = FastOutSlowInEasing)
-                        ) + fadeIn(tween(500))).togetherWith(
+                            initialOffsetX = { fullWidth -> if (targetState) fullWidth / 8 else -fullWidth / 8 },
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(220))).togetherWith(
                             slideOutHorizontally(
-                                targetOffsetX = { fullWidth -> if (targetState) -fullWidth else fullWidth },
-                                animationSpec = tween(500, easing = FastOutSlowInEasing)
-                            ) + fadeOut(tween(500))
+                                targetOffsetX = { fullWidth -> if (targetState) -fullWidth / 8 else fullWidth / 8 },
+                                animationSpec = tween(220, easing = FastOutSlowInEasing)
+                            ) + fadeOut(tween(220))
                         )
                     },
                     modifier = Modifier.fillMaxSize()
@@ -681,11 +685,11 @@ fun AddEditNoteScreen(
                                     placeholder = {
                                         Text(
                                             "Title",
-                                            style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Black, textDirection = TextDirection.ContentOrLtr),
+                                            style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold, textDirection = TextDirection.ContentOrLtr),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
                                         )
                                     },
-                                    textStyle = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Black, textDirection = TextDirection.ContentOrLtr),
+                                    textStyle = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold, textDirection = TextDirection.ContentOrLtr),
                                     colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
                                         unfocusedContainerColor = Color.Transparent,
@@ -696,10 +700,10 @@ fun AddEditNoteScreen(
                                     ),
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
                                 )
-        
+
                                 TextField(
                                     value = contentValue,
-                                    onValueChange = { 
+                                    onValueChange = {
                                         if (it.text != contentValue.text) {
                                             redoStack = emptyList()
                                         }
@@ -737,9 +741,9 @@ fun AddEditNoteScreen(
                                     .padding(bottom = 8.dp, start = 12.dp, end = 12.dp)
                             ) {
                                 Surface(
-                                    tonalElevation = 8.dp,
-                                    shadowElevation = 16.dp,
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
+                                    tonalElevation = 0.dp,
+                                    shadowElevation = 4.dp,
+                                    color = MaterialTheme.colorScheme.surface,
                                     shape = RoundedCornerShape(24.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -786,7 +790,7 @@ fun AddEditNoteScreen(
                                             }
                                             Spacer(modifier = Modifier.height(4.dp))
                                         }
-         
+
                                         // Redesigned structured non-crowded bottom toolbar
                                         Row(
                                             modifier = Modifier
@@ -1001,7 +1005,7 @@ fun AddEditNoteScreen(
                                 Text(
                                     text = title,
                                     style = MaterialTheme.typography.headlineLarge,
-                                    fontWeight = FontWeight.Black,
+                                    fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(bottom = 16.dp)
                                 )
@@ -1057,17 +1061,14 @@ fun AddEditNoteScreen(
 
     // Modern Note Customization Slider & Bottom Sheet
         if (showSettingsSheet) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = { showSettingsSheet = false },
                 sheetState = sheetState,
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     // Header Bar
@@ -1090,16 +1091,16 @@ fun AddEditNoteScreen(
                                 CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
                             Text(
-                                text = "Customize Note",
+                                text = "Note options",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         IconButton(
                             onClick = { showSettingsSheet = false },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
@@ -1233,7 +1234,7 @@ fun AddEditNoteScreen(
                             }
                         }
                     }
-                    
+
                     // 2. Advanced Privacy & Lock Card
                     Card(
                         modifier = Modifier
@@ -1294,7 +1295,7 @@ fun AddEditNoteScreen(
                             }
                         }
                     }
-                    
+
                     // 3. Advanced Custom Export Card
                     Card(
                         modifier = Modifier
@@ -1497,13 +1498,11 @@ fun AddEditNoteScreen(
 
         // Custom Tag Creation dialog
         if (showAddTagDialog) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = {
                     showAddTagDialog = false
                     newTagText = ""
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -1525,7 +1524,7 @@ fun AddEditNoteScreen(
                     Text(
                         text = "Create Custom Tag",
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
@@ -1579,13 +1578,11 @@ fun AddEditNoteScreen(
 
         // Visual text formatting color picker wizard dialog
         if (showColorHighlightWizard) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = {
                     showColorHighlightWizard = false
                     wizardTextToFormat = ""
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -1602,7 +1599,7 @@ fun AddEditNoteScreen(
                         CanvasCustomIcon(CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Text("Color Highlight Studio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
-                    
+
                     OutlinedTextField(
                         value = wizardTextToFormat,
                         onValueChange = { wizardTextToFormat = it },
@@ -1616,7 +1613,7 @@ fun AddEditNoteScreen(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    
+
                     Text("TEXT COLOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     val textColors = listOf("#2D26A0" to "Indigo Dark", "#9A5500" to "Orange Dark", "#8B2060" to "Rose Dark", "#1B5E20" to "Green Dark", "#1A237E" to "Blue Dark", "#B71C1C" to "Red Dark", "#4A148C" to "Violet Dark")
                     Row(
@@ -1632,8 +1629,8 @@ fun AddEditNoteScreen(
                                     .clip(CircleShape)
                                     .background(rgb)
                                     .border(
-                                        width = if (wizardTextColorSelected == hexCode) 2.5.dp else 1.dp, 
-                                        color = if (wizardTextColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f), 
+                                        width = if (wizardTextColorSelected == hexCode) 2.5.dp else 1.dp,
+                                        color = if (wizardTextColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
                                         shape = CircleShape
                                     )
                                     .clickable { wizardTextColorSelected = if (wizardTextColorSelected == hexCode) null else hexCode },
@@ -1649,7 +1646,7 @@ fun AddEditNoteScreen(
                             }
                         }
                     }
-                    
+
                     Text("BACKGROUND ACCENT COLOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     val bgColors = listOf("#E6E3FF" to "Indigo", "#FFF0CC" to "Orange", "#FFD6EC" to "Rose", "#E8F5E9" to "Green", "#E8EAF6" to "Blue", "#FFEBEE" to "Red", "#F3E5F5" to "Violet")
                     Row(
@@ -1665,8 +1662,8 @@ fun AddEditNoteScreen(
                                     .clip(CircleShape)
                                     .background(rgb)
                                     .border(
-                                        width = if (wizardBgColorSelected == hexCode) 2.5.dp else 1.dp, 
-                                        color = if (wizardBgColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f), 
+                                        width = if (wizardBgColorSelected == hexCode) 2.5.dp else 1.dp,
+                                        color = if (wizardBgColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
                                         shape = CircleShape
                                     )
                                     .clickable { wizardBgColorSelected = if (wizardBgColorSelected == hexCode) null else hexCode },
@@ -1682,17 +1679,17 @@ fun AddEditNoteScreen(
                             }
                         }
                     }
-                    
+
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp), 
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedButton(
                             onClick = { showColorHighlightWizard = false; wizardTextToFormat = "" },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
-                        ) { 
-                            Text("Cancel") 
+                        ) {
+                            Text("Cancel")
                         }
                         Button(
                             onClick = {
@@ -1705,8 +1702,8 @@ fun AddEditNoteScreen(
                             },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1.2f)
-                        ) { 
-                            Text("Apply Format", fontWeight = FontWeight.Bold) 
+                        ) {
+                            Text("Apply Format", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1718,7 +1715,7 @@ fun AddEditNoteScreen(
             // Amplitude variables used to animate dynamic waveform bars on Canvas!
             val amplitudes = remember { mutableStateListOf(15f, 10f, 25f, 12f, 40f, 18f, 30f, 8f, 20f, 14f) }
 
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = {
                     if (isRecordingAudio) {
                         try { mediaRecorder?.stop() } catch (e: Exception) {}
@@ -1728,8 +1725,6 @@ fun AddEditNoteScreen(
                     }
                     showVoiceRecorderDialog = false
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -1765,7 +1760,7 @@ fun AddEditNoteScreen(
                             Text(
                                 text = "Voice Note Studio",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -1781,7 +1776,7 @@ fun AddEditNoteScreen(
                                 recordTimeSeconds = 0
                             },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
@@ -1847,7 +1842,7 @@ fun AddEditNoteScreen(
                     }
                     Text(
                         text = formattedTime,
-                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Black),
+                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
                         color = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                         letterSpacing = 1.sp
                     )
@@ -1941,7 +1936,7 @@ fun AddEditNoteScreen(
 
         // AI Speech Dictation dialog
         if (showSpeechDictationDialog) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = {
                     if (isListeningSpeech) {
                         try { speechRecognizer.stopListening() } catch (e: Exception) {}
@@ -1949,8 +1944,6 @@ fun AddEditNoteScreen(
                     }
                     showSpeechDictationDialog = false
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -1986,7 +1979,7 @@ fun AddEditNoteScreen(
                             Text(
                                 "AI Voice Dictation",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -1999,7 +1992,7 @@ fun AddEditNoteScreen(
                                 showSpeechDictationDialog = false
                             },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
@@ -2193,10 +2186,8 @@ fun AddEditNoteScreen(
 
         // Interactive Table generator dialog
         if (showTableGeneratorDialog) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = { showTableGeneratorDialog = false },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -2227,14 +2218,14 @@ fun AddEditNoteScreen(
                             Text(
                                 "Table Generator",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         IconButton(
                             onClick = { showTableGeneratorDialog = false },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
@@ -2243,7 +2234,7 @@ fun AddEditNoteScreen(
                     }
 
                     Text("Specify table rows and columns to generate clean Markdown table tags.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    
+
                     OutlinedTextField(
                         value = tableColumnsCount,
                         onValueChange = { tableColumnsCount = it },
@@ -2270,7 +2261,7 @@ fun AddEditNoteScreen(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -2313,10 +2304,8 @@ fun AddEditNoteScreen(
 
         // Custom Premium styling Studio overlay dialog
         if (showPremiumToolsDialog) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = { showPremiumToolsDialog = false },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -2336,8 +2325,8 @@ fun AddEditNoteScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Pro Formatting Studio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("Advanced content creator suite", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+                            Text("Writing tools", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Format text and add content", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
                         }
                     }
                     Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
@@ -2345,38 +2334,35 @@ fun AddEditNoteScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
+
                     ) {
-                        Text("TXT HEADINGS & STYLES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 4.dp),
+                        Text("Formatting", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            PremiumToolChip(label = "H1 Title", iconType = CanvasIconType.HEADING_1) { content += "\n# "; showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "H2 Subtitle", iconType = CanvasIconType.HEADING_2) { content += "\n## "; showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Heading 1", iconType = CanvasIconType.HEADING_1) { content += "\n# "; showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Heading 2", iconType = CanvasIconType.HEADING_2) { content += "\n## "; showPremiumToolsDialog = false }
                             PremiumToolChip(label = "Italics", iconType = CanvasIconType.FORMAT_ITALIC) { content += "*"; showPremiumToolsDialog = false }
                             PremiumToolChip(label = "Marker", iconType = CanvasIconType.HIGHLIGHT) { content += "=="; showPremiumToolsDialog = false }
                             PremiumToolChip(label = "Quote block", iconType = CanvasIconType.QUOTE) { content += "\n> "; showPremiumToolsDialog = false }
                             PremiumToolChip(label = "Code Block", iconType = CanvasIconType.CODE) { content += "\n```kotlin\n\n```"; showPremiumToolsDialog = false }
                             PremiumToolChip(label = "Bullet List", iconType = CanvasIconType.BULLET_LIST) { content += "\n- "; showPremiumToolsDialog = false }
                         }
-                        
+
                         Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
-                        
-                        Text("ADVANCED BUILDERS & STORAGE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
-                        
+
+                        Text("Insert & create", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+
                         Column(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             PremiumInteractiveCard(title = "AI Voice Dictation", description = "Transcribe and clean up voice notes with Gemini AI", iconType = CanvasIconType.MIC, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; checkAndRequestDictation() }
-                            PremiumInteractiveCard(title = "Text Color Vibe Customizer", description = "Format with tailored backgrounds & text highlights", iconType = CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; showColorHighlightWizard = true }
-                            PremiumInteractiveCard(title = "Dynamic Table Builder", description = "Insert customized grid spreadsheets dynamically", iconType = CanvasIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
-                            PremiumInteractiveCard(title = "Upload Document Files", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = CanvasIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
+                            PremiumInteractiveCard(title = "Text color & highlight", description = "Format with tailored backgrounds & text highlights", iconType = CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; showColorHighlightWizard = true }
+                            PremiumInteractiveCard(title = "Insert table", description = "Insert customized grid spreadsheets dynamically", iconType = CanvasIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
+                            PremiumInteractiveCard(title = "Attach file", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = CanvasIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
@@ -2399,6 +2385,7 @@ fun ToolbarIconButton(
             .size(48.dp)
             .clip(CircleShape)
             .background(containerColor)
+            .semantics { this.contentDescription = contentDescription }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -2508,7 +2495,7 @@ fun PremiumInteractiveCard(
                     modifier = Modifier.size(22.dp)
                 )
             }
-            
+
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -2525,7 +2512,7 @@ fun PremiumInteractiveCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )
             }
-            
+
             CanvasCustomIcon(
                 type = CanvasIconType.ARROW_RIGHT,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
@@ -2547,10 +2534,10 @@ suspend fun copyUriToInternalStorage(context: android.content.Context, uri: andr
                 }
             }
         } catch (e: Exception) {}
-        
+
         val time = System.currentTimeMillis()
         val finalFileName = "${time}_${fileName.replace(" ", "_").replace("/", "_")}"
-        
+
         val destFile = java.io.File(context.filesDir, finalFileName)
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -2560,7 +2547,7 @@ suspend fun copyUriToInternalStorage(context: android.content.Context, uri: andr
             }
             android.net.Uri.fromFile(destFile)
         } catch (e: Exception) {
-            uri 
+            uri
         }
     }
 }

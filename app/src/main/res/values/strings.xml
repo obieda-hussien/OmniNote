@@ -6,4 +6,15 @@
     <string name="delete_permanent_cancel">Cancel</string>
     <string name="empty_trash_title">Empty Trash</string>
     <string name="empty_trash_msg">Are you sure you want to empty the trash? All trashed notes will be permanently deleted.</string>
+    <string name="notes_title">Omni Note</string>
+    <string name="archive_title">Archive</string>
+    <string name="trash_title">Trash</string>
+    <string name="notes_count_label">notes</string>
+    <string name="search_notes">Search notes</string>
+    <string name="clear_search">Clear search</string>
+    <string name="note_statistics">Note statistics</string>
+    <string name="list_view">List view</string>
+    <string name="grid_view">Grid view</string>
+    <string name="sort_filter">Sort &amp; filter</string>
 </resources>
+

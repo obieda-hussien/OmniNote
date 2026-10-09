@@ -94,26 +94,30 @@ class MainActivity : ComponentActivity() {
                         enterTransition = {
                             slideIntoContainer(
                                 AnimatedContentTransitionScope.SlideDirection.Start,
-                                animationSpec = tween(400, easing = EaseInOutCubic)
-                            ) + fadeIn(animationSpec = tween(400))
+                                animationSpec = tween(220, easing = EaseInOutCubic),
+                                initialOffset = { it / 5 }
+                            ) + fadeIn(animationSpec = tween(220))
                         },
                         exitTransition = {
                             slideOutOfContainer(
                                 AnimatedContentTransitionScope.SlideDirection.Start,
-                                animationSpec = tween(400, easing = EaseInOutCubic)
-                            ) + fadeOut(animationSpec = tween(400))
+                                animationSpec = tween(220, easing = EaseInOutCubic),
+                                targetOffset = { it / 5 }
+                            ) + fadeOut(animationSpec = tween(220))
                         },
                         popEnterTransition = {
                             slideIntoContainer(
                                 AnimatedContentTransitionScope.SlideDirection.End,
-                                animationSpec = tween(400, easing = EaseInOutCubic)
-                            ) + fadeIn(animationSpec = tween(400))
+                                animationSpec = tween(220, easing = EaseInOutCubic),
+                                initialOffset = { it / 5 }
+                            ) + fadeIn(animationSpec = tween(220))
                         },
                         popExitTransition = {
                             slideOutOfContainer(
                                 AnimatedContentTransitionScope.SlideDirection.End,
-                                animationSpec = tween(400, easing = EaseInOutCubic)
-                            ) + fadeOut(animationSpec = tween(400))
+                                animationSpec = tween(220, easing = EaseInOutCubic),
+                                targetOffset = { it / 5 }
+                            ) + fadeOut(animationSpec = tween(220))
                         }
                     ) {
                         composable(Screen.Home.route) {
@@ -154,3 +158,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
