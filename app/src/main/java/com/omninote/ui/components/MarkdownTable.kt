@@ -63,7 +63,9 @@ internal fun MarkdownTable(table: TableBlock) {
                     measured.map { it + extra }
                 }
                 Column {
-                Column(Modifier.horizontalScroll(scroll).semantics { contentDescription = title }) {
+                Column(Modifier.horizontalScroll(scroll)
+                    .width(widths.fold(0.dp) { sum, width -> sum + width } + (count - 1).dp)
+                    .semantics { contentDescription = title }) {
                     rows.forEachIndexed { rowIndex, cells ->
                         Row(Modifier.height(IntrinsicSize.Min)) {
                             repeat(count) { column ->
