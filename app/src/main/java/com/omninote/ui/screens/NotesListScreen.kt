@@ -600,8 +600,10 @@ fun NotesListScreen(
     val imeNow by rememberUpdatedState(isImeVisible)
     val scrollConnection = remember(chrome, density) {
         object : NestedScrollConnection {
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (!imeNow) chrome.scroll(consumed.y, topNow, with(density) { 32.dp.toPx() })
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // Follow the gesture, not layout/fling corrections when the bars resize the list.
+                if (!imeNow && source == NestedScrollSource.UserInput)
+                    chrome.scroll(available.y, topNow, with(density) { 32.dp.toPx() })
                 return Offset.Zero
             }
         }

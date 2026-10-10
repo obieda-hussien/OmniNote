@@ -66,7 +66,9 @@ class LibraryChromeTest {
         }
         compose.waitUntil(10000) { compose.onAllNodesWithTag("note_library_grid").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("note_library_grid").performTouchInput { swipeUp() }
+        compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
+        compose.waitUntil(10000) { compose.onAllNodesWithText("Omni Note").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText("Omni Note").assertDoesNotExist()
         compose.onNodeWithText("Active").assertDoesNotExist()
         compose.onNodeWithContentDescription("Search notes").assertIsDisplayed()
@@ -74,7 +76,14 @@ class LibraryChromeTest {
         compose.onNodeWithText("Quick note").assertIsDisplayed()
         compose.onNodeWithContentDescription("New note").performClick()
         compose.runOnIdle { assertEquals(1, newNotes) }
+        compose.onNodeWithTag("note_library_grid").performTouchInput { swipeDown() }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("Omni Note").assertIsDisplayed()
+        compose.onNodeWithText("Active").assertIsDisplayed()
+        compose.onNodeWithTag("note_library_grid").performTouchInput { swipeUp() }
+        compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithContentDescription("Show library navigation").performClick()
+        compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithText("Omni Note").assertIsDisplayed()
         compose.onNodeWithText("Active").assertIsDisplayed()
     }
