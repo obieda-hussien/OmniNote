@@ -58,6 +58,9 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
 
       - name: Cache Gradle + native build dirs
         uses: actions/cache@v5
@@ -114,7 +117,6 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    needs: code-quality
     permissions:
       contents: read
       checks: write
@@ -128,11 +130,14 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: "21" # Robolectric Android 16 requires JDK 21
           cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
 
       - name: Grant gradlew permission
         run: chmod +x gradlew
@@ -142,6 +147,19 @@ jobs:
           ./gradlew --no-daemon \
             :app:compileDebugKotlin :app:testDebugUnitTest \
             --continue
+
+      - name: Summarize test results
+        if: always()
+        run: |
+          python3 - <<'PYTEST'
+          import pathlib, xml.etree.ElementTree as ET
+          for path in pathlib.Path('app/build/test-results').rglob('TEST-*.xml'):
+              root = ET.parse(path).getroot()
+              print(f"{root.get('name')}: {root.get('tests')} tests, {root.get('failures')} failures")
+              for case in root.findall('testcase'):
+                  for failure in case.findall('failure'):
+                      print(f"FAILED {case.get('name')}: {failure.get('message')}")
+          PYTEST
 
       - name: Upload test reports
         if: always()
@@ -164,7 +182,6 @@ jobs:
   security-scan:
     name: Dependency Security Scan
     runs-on: ubuntu-latest
-    needs: code-quality
     permissions:
       contents: read
       actions: read
@@ -227,7 +244,7 @@ jobs:
   android-debug:
     name: Android Debug Build
     runs-on: ubuntu-latest
-    needs: [ test, security-scan ]
+    needs: [ code-quality, test, security-scan ]
     timeout-minutes: 90
     permissions:
       contents: read
@@ -247,6 +264,9 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
 
       - name: Grant gradlew permission
         run: chmod +x gradlew
@@ -306,7 +326,7 @@ jobs:
   android-release:
     name: Android Release Build
     runs-on: ubuntu-latest
-    needs: [ test, security-scan ]
+    needs: [ code-quality, test, security-scan ]
     timeout-minutes: 90
     permissions:
       contents: write
@@ -326,6 +346,9 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
 
       - name: Grant gradlew permission
         run: chmod +x gradlew
@@ -448,3 +471,4 @@ jobs:
             echo "| Android Debug | ${{ needs.android-debug.result }} |"
             echo "| Android Release | ${{ needs.android-release.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+

@@ -28,19 +28,9 @@ android {
         storePassword = System.getenv("STORE_PASSWORD")
         keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
         keyPassword = System.getenv("KEY_PASSWORD")
-      } else {
-        storeFile = file("${rootDir}/debug.keystore")
-        storePassword = "android"
-        keyAlias = "androiddebugkey"
-        keyPassword = "android"
       }
     }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
-    }
+
   }
 
   buildTypes {
@@ -49,10 +39,7 @@ android {
       isMinifyEnabled = false
       isShrinkResources = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
-    }
-    debug {
-      signingConfig = signingConfigs.getByName("debugConfig")
+      signingConfig = if (System.getenv("KEYSTORE_PATH") != null) signingConfigs.getByName("release") else null
     }
   }
   compileOptions {
@@ -95,6 +82,9 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
+  implementation("org.commonmark:commonmark:0.24.0")
+  implementation("org.commonmark:commonmark-ext-gfm-tables:0.24.0")
+  implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0")
   
   // Google AdMob (Kept based on your request for future use)
   // implementation("com.google.android.gms:play-services-ads:23.0.0")
@@ -117,3 +107,4 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
 }
+

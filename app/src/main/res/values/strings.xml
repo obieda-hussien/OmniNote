@@ -6,4 +6,24 @@
     <string name="delete_permanent_cancel">Cancel</string>
     <string name="empty_trash_title">Empty Trash</string>
     <string name="empty_trash_msg">Are you sure you want to empty the trash? All trashed notes will be permanently deleted.</string>
+    <string name="notes_title">Omni Note</string>
+    <string name="archive_title">Archive</string>
+    <string name="trash_title">Trash</string>
+    <string name="notes_count_label">notes</string>
+    <string name="search_notes">Search notes</string>
+    <string name="clear_search">Clear search</string>
+    <string name="note_statistics">Note statistics</string>
+    <string name="list_view">List view</string>
+    <string name="grid_view">Grid view</string>
+    <string name="sort_filter">Sort &amp; filter</string>
+    <string name="markdown_table">Table</string>
+    <string name="table_dimensions">%1$d rows · %2$d columns</string>
+    <string name="table_scroll_hint">Swipe sideways to see all columns</string>
+    <string name="loading_audio">Loading audio</string>
+    <string name="audio_unavailable">Audio could not be opened. Tap play to retry.</string>
+    <string name="new_note">New note</string>
+    <string name="quick_note">Quick note</string>
+    <string name="save_quick_note">Save quick note</string>
+    <string name="show_library_navigation">Show library navigation</string>
 </resources>
+

@@ -32,6 +32,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -112,421 +114,19 @@ fun appendAnnotatedPlainSlice(
     }
 }
 
-/**
- * Parses markdown inline styles recursively/flat-wise to make AnnotatedString robust.
- */
-fun parseInlineStyles(
-    text: String,
-    primaryColor: Color,
-    onSurfaceVariant: Color
-): AnnotatedString {
-    val builder = AnnotatedString.Builder()
-    
-    // We will use a reliable sequential checking algorithm.
-    // Order of priority: 
-    // 1. [color:#HEX](text) or [bg:#HEX](text)
-    // 2. Standard Markdown Link [Label](url)
-    // 3. Inline Code `code`
-    // 4. Highlight ==text==
-    // 5. Bold **text**
-    // 6. Italic *text* or _text_
-    
-    var remainingText = text
-    while (remainingText.isNotEmpty()) {
-        // Parse Color & Background tags with balanced parenthesis counting
-        val colorPrefixMatch = Regex("""^\[color:(#[0-9a-fA-F]{6,8})\]\(""").find(remainingText)
-        val bgPrefixMatch = Regex("""^\[bg:(#[0-9a-fA-F]{6,8})\]\(""").find(remainingText)
-        
-        val linkRegex = Regex("""^\[([^\]]+)\]\(([^)]+)\)""")
-        val codeRegex = Regex("""^`(.*?)`""")
-        val highlightRegex = Regex("""^==(.*?)==""")
-        val boldRegex = Regex("""^\*\*(.*?)\*\*""")
-        val italicRegex = Regex("""^\*(.*?)\*""")
-        val italicUnderlineRegex = Regex("""^_(.*?)_""")
-
-        val linkMatch = linkRegex.find(remainingText)
-        val codeMatch = codeRegex.find(remainingText)
-        val highlightMatch = highlightRegex.find(remainingText)
-        val boldMatch = boldRegex.find(remainingText)
-        val italicMatch = italicRegex.find(remainingText) ?: italicUnderlineRegex.find(remainingText)
-
-        when {
-            colorPrefixMatch != null -> {
-                val hex = colorPrefixMatch.groupValues[1]
-                val prefix = colorPrefixMatch.value
-                var depth = 1
-                var endIndex = -1
-                for (i in prefix.length until remainingText.length) {
-                    if (remainingText[i] == '(') depth++
-                    else if (remainingText[i] == ')') {
-                        depth--
-                        if (depth == 0) {
-                            endIndex = i
-                            break
-                        }
-                    }
-                }
-                
-                if (endIndex != -1) {
-                    val insideValue = remainingText.substring(prefix.length, endIndex)
-                    val color = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { primaryColor }
-                    
-                    builder.pushStyle(SpanStyle(color = color))
-                    builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
-                    builder.pop()
-                    
-                    remainingText = remainingText.substring(endIndex + 1)
-                } else {
-                    // Fallback to treat as plain text if no matching closing bracket was found
-                    builder.append(remainingText.first())
-                    remainingText = remainingText.drop(1)
-                }
-            }
-            bgPrefixMatch != null -> {
-                val hex = bgPrefixMatch.groupValues[1]
-                val prefix = bgPrefixMatch.value
-                var depth = 1
-                var endIndex = -1
-                for (i in prefix.length until remainingText.length) {
-                    if (remainingText[i] == '(') depth++
-                    else if (remainingText[i] == ')') {
-                        depth--
-                        if (depth == 0) {
-                            endIndex = i
-                            break
-                        }
-                    }
-                }
-                
-                if (endIndex != -1) {
-                    val insideValue = remainingText.substring(prefix.length, endIndex)
-                    val bgColor = try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { primaryColor.copy(alpha = 0.2f) }
-                    
-                    builder.pushStyle(SpanStyle(background = bgColor))
-                    builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
-                    builder.pop()
-                    
-                    remainingText = remainingText.substring(endIndex + 1)
-                } else {
-                    // Fallback to treat as plain text if no matching closing bracket was found
-                    builder.append(remainingText.first())
-                    remainingText = remainingText.drop(1)
-                }
-            }
-            linkMatch != null -> {
-                val label = linkMatch.groupValues[1]
-                val url = linkMatch.groupValues[2]
-                
-                builder.pushStringAnnotation(tag = "URL", annotation = url)
-                builder.pushStyle(SpanStyle(color = primaryColor, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Bold))
-                builder.append(parseInlineStyles(label, primaryColor, onSurfaceVariant))
-                builder.pop()
-                builder.pop()
-                
-                remainingText = remainingText.substring(linkMatch.value.length)
-            }
-            codeMatch != null -> {
-                val insideValue = codeMatch.groupValues[1]
-                builder.pushStyle(
-                    SpanStyle(
-                        fontFamily = FontFamily.Monospace,
-                        background = onSurfaceVariant.copy(alpha = 0.1f),
-                        color = primaryColor
-                    )
-                )
-                builder.append(insideValue)
-                builder.pop()
-                remainingText = remainingText.substring(codeMatch.value.length)
-            }
-            highlightMatch != null -> {
-                val insideValue = highlightMatch.groupValues[1]
-                builder.pushStyle(SpanStyle(background = Color(0xFFFBC02D).copy(alpha = 0.4f), fontWeight = FontWeight.Medium))
-                builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
-                builder.pop()
-                remainingText = remainingText.substring(highlightMatch.value.length)
-            }
-            boldMatch != null -> {
-                val insideValue = boldMatch.groupValues[1]
-                builder.pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
-                builder.pop()
-                remainingText = remainingText.substring(boldMatch.value.length)
-            }
-            italicMatch != null -> {
-                val insideValue = italicMatch.groupValues[1]
-                builder.pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
-                builder.append(parseInlineStyles(insideValue, primaryColor, onSurfaceVariant))
-                builder.pop()
-                remainingText = remainingText.substring(italicMatch.value.length)
-            }
-            else -> {
-                // Find next token boundary
-                val nextSpecialIndex = remainingText.indexOfAny(listOf("[color:", "[bg:", "`", "==", "**", "*", "_", "["), 1)
-                val plainTextSlice = if (nextSpecialIndex == -1) {
-                    remainingText
-                } else {
-                    remainingText.substring(0, nextSpecialIndex)
-                }
-                appendAnnotatedPlainSlice(builder, plainTextSlice, primaryColor)
-                remainingText = remainingText.substring(plainTextSlice.length)
-            }
-        }
-    }
-    return builder.toAnnotatedString()
-}
-
-/**
- * Renders complete notes with rich Markdown layout structure.
- */
+/** Reusable non-scrolling content; the editor uses a lazy preview for long documents. */
 @Composable
 fun MarkdownContent(
     modifier: Modifier = Modifier,
     rawText: String,
     onCheckedChange: ((lineIndex: Int, isChecked: Boolean) -> Unit)? = null
 ) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-    val lines = remember(rawText) { rawText.split("\n") }
-
-    Box(modifier = modifier) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            var index = 0
-            while (index < lines.size) {
-                val line = lines[index]
-                val trimmedLine = line.trim()
-
-                // 1. Code block handling:
-                if (trimmedLine.startsWith("```")) {
-                    val language = trimmedLine.substring(3).trim().ifEmpty { "code" }
-                    val codeBuilder = StringBuilder()
-                    index++
-                    while (index < lines.size && !lines[index].trim().startsWith("```")) {
-                        codeBuilder.append(lines[index]).append("\n")
-                        index++
-                    }
-                    CodeBlockLayout(code = codeBuilder.toString(), language = language)
-                    if (index < lines.size) index++ // Consume ending ```
-                    continue
-                }
-
-                // 2. Table handling:
-                if (trimmedLine.startsWith("|") && trimmedLine.endsWith("|") && index + 1 < lines.size && lines[index + 1].trim().startsWith("|")) {
-                    val tableLines = mutableListOf<String>()
-                    while (index < lines.size && lines[index].trim().startsWith("|") && lines[index].trim().endsWith("|")) {
-                        tableLines.add(lines[index].trim())
-                        index++
-                    }
-                    TableLayout(tableLines = tableLines, primaryColor = primaryColor, onSurfaceVariant = onSurfaceVariant)
-                    continue
-                }
-
-                // 3. Inline Images handling: ![desc](uriString)
-                val imageRegex = Regex("""^!\[(.*?)\]\((.*?)\)$""")
-                val imageMatch = imageRegex.matchEntire(trimmedLine)
-                if (imageMatch != null) {
-                    val desc = imageMatch.groupValues[1]
-                    val uriStr = imageMatch.groupValues[2]
-                    ImageLayout(uriString = uriStr, description = desc)
-                    index++
-                    continue
-                }
-
-                // 4. Inline Voice Note / Audio handling: [audio:Label](uriString) or [voice:Label](uriString)
-                val audioRegex = Regex("""^\[(audio|voice)(?::(.*?))?\]\((.*?)\)$""")
-                val audioMatch = audioRegex.matchEntire(trimmedLine)
-                if (audioMatch != null) {
-                    val label = audioMatch.groupValues[2].ifEmpty { "Voice Recording" }
-                    val uriStr = audioMatch.groupValues[3]
-                    AudioPlayerLayout(uriString = uriStr, label = label)
-                    index++
-                    continue
-                }
-
-                // 5. Generic File attachment: [file:Filename](uriString)
-                val fileRegex = Regex("""^\[file(?::(.*?))?\]\((.*?)\)$""")
-                val fileMatch = fileRegex.matchEntire(trimmedLine)
-                if (fileMatch != null) {
-                    val filename = fileMatch.groupValues[1].ifEmpty { "File Attachment" }
-                    val uriStr = fileMatch.groupValues[2]
-                    FileAttachmentLayout(uriString = uriStr, filename = filename)
-                    index++
-                    continue
-                }
-
-                // 6. Headers
-                if (trimmedLine.startsWith("# ")) {
-                    val headerText = trimmedLine.substring(2)
-                    InteractiveText(
-                        annotatedString = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Black,
-                            textDirection = TextDirection.ContentOrLtr
-                        ),
-                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                    )
-                    Divider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), thickness = 2.dp)
-                    index++
-                    continue
-                }
-
-                if (trimmedLine.startsWith("## ")) {
-                    val headerText = trimmedLine.substring(3)
-                    InteractiveText(
-                        annotatedString = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            color = MaterialTheme.colorScheme.secondary,
-                            fontWeight = FontWeight.Bold,
-                            textDirection = TextDirection.ContentOrLtr
-                        ),
-                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                    )
-                    index++
-                    continue
-                }
-
-                if (trimmedLine.startsWith("### ")) {
-                    val headerText = trimmedLine.substring(4)
-                    InteractiveText(
-                        annotatedString = parseInlineStyles(headerText, primaryColor, onSurfaceVariant),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            color = MaterialTheme.colorScheme.tertiary,
-                            fontWeight = FontWeight.SemiBold,
-                            textDirection = TextDirection.ContentOrLtr
-                        ),
-                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
-                    )
-                    index++
-                    continue
-                }
-
-                // 7. Checklist Items: - [ ] or - [x]
-                val isUncheckedBox = trimmedLine.startsWith("- [ ]") || trimmedLine.startsWith("* [ ]")
-                val isCheckedBox = trimmedLine.startsWith("- [x]") || trimmedLine.startsWith("* [x]") || trimmedLine.startsWith("- [X]") || trimmedLine.startsWith("* [X]")
-                if (isUncheckedBox || isCheckedBox) {
-                    val checked = isCheckedBox
-                    val checkboxTxt = trimmedLine.substring(5).trim()
-                    val lineIndex = index
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable(enabled = onCheckedChange != null) {
-                                onCheckedChange?.invoke(lineIndex, !checked)
-                            }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (checked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
-                            contentDescription = "Checklist Toggle",
-                            tint = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = parseInlineStyles(checkboxTxt, primaryColor, onSurfaceVariant),
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                textDecoration = if (checked) TextDecoration.LineThrough else TextDecoration.None,
-                                textDirection = TextDirection.ContentOrLtr
-                            ),
-                            color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    index++
-                    continue
-                }
-
-                // 8. Bullet lists
-                if (trimmedLine.startsWith("- ") || trimmedLine.startsWith("* ")) {
-                    val bulletTxt = trimmedLine.substring(2)
-                    Row(
-                        verticalAlignment = Alignment.Top,
-                        modifier = Modifier.padding(start = 14.dp, top = 2.dp, bottom = 2.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 8.dp, end = 10.dp)
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                        InteractiveText(
-                            annotatedString = parseInlineStyles(bulletTxt, primaryColor, onSurfaceVariant),
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                color = MaterialTheme.colorScheme.onSurface,
-                                textDirection = TextDirection.ContentOrLtr
-                            )
-                        )
-                    }
-                    index++
-                    continue
-                }
-
-                // 9. Blockquotes
-                if (trimmedLine.startsWith("> ")) {
-                    val quoteTxt = trimmedLine.substring(2)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 4.dp, top = 6.dp, bottom = 6.dp)
-                            .clip(RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))
-                            .drawBehindBorderLeft(color = MaterialTheme.colorScheme.primary, width = 4.dp)
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(
-                                imageVector = Icons.Default.FormatQuote,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            InteractiveText(
-                                annotatedString = parseInlineStyles(quoteTxt, primaryColor, onSurfaceVariant),
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontStyle = FontStyle.Italic,
-                                    lineHeight = 22.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                                    textDirection = TextDirection.ContentOrLtr
-                                )
-                            )
-                        }
-                    }
-                    index++
-                    continue
-                }
-
-                // 10. Horizontal Rules
-                if (trimmedLine == "---" || trimmedLine == "***" || trimmedLine == "___") {
-                    Divider(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
-                        thickness = 1.dp,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                    index++
-                    continue
-                }
-
-                // 11. Default regular line
-                if (line.isNotEmpty()) {
-                    InteractiveText(
-                        annotatedString = parseInlineStyles(line, primaryColor, onSurfaceVariant),
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textDirection = TextDirection.ContentOrLtr
-                        )
-                    )
-                } else {
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-                index++
-            }
+    val document = remember(rawText) { NoteMarkdownParser.parseDocument(rawText) }
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        document.root.children().forEach { block ->
+            MarkdownBlock(block, document.lines, onCheckedChange?.let { callback ->
+                { line, checked -> callback(document.originalLine(line), checked) }
+            })
         }
     }
 }
@@ -553,7 +153,7 @@ fun ImageLayout(uriString: String, description: String) {
                 contentDescription = description,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 240.dp),
+                    .heightIn(min = 120.dp, max = 240.dp),
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
             )
@@ -569,16 +169,18 @@ fun ImageLayout(uriString: String, description: String) {
     }
 
     if (showDialog) {
+        val previewHeight = LocalConfiguration.current.screenHeightDp.dp * 0.85f
         androidx.compose.ui.window.Dialog(onDismissRequest = { showDialog = false }) {
             androidx.compose.material3.Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp)),
+                    .heightIn(max = previewHeight)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
                 color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
+                tonalElevation = 0.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Row(
@@ -632,10 +234,13 @@ fun ImageLayout(uriString: String, description: String) {
 @Composable
 fun AudioPlayerLayout(uriString: String, label: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentPos by remember { mutableStateOf(0f) }
-    var totalDuration by remember { mutableStateOf(0) }
+    var mediaPlayer by remember(uriString) { mutableStateOf<android.media.MediaPlayer?>(null) }
+    var isPlaying by remember(uriString) { mutableStateOf(false) }
+    var currentPos by remember(uriString) { mutableStateOf(0f) }
+    var totalDuration by remember(uriString) { mutableStateOf(0) }
+    var isLoading by remember(uriString) { mutableStateOf(false) }
+    var playerReady by remember(uriString) { mutableStateOf(false) }
+    var audioError by remember(uriString) { mutableStateOf(false) }
 
     // Auto-dispose player
     DisposableEffect(uriString) {
@@ -644,65 +249,61 @@ fun AudioPlayerLayout(uriString: String, label: String) {
         }
     }
 
-    // Launch progress updater
     LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (isPlaying && mediaPlayer != null) {
-                try {
-                    val pos = mediaPlayer?.currentPosition ?: 0
-                    currentPos = pos.toFloat()
-                    if (pos >= totalDuration - 250 && totalDuration > 0) {
-                        isPlaying = false
-                        currentPos = 0f
-                        mediaPlayer?.seekTo(0)
-                        mediaPlayer?.pause()
-                    }
-                } catch (e: Exception) {
-                    // Ignore transient exceptions
-                }
-                kotlinx.coroutines.delay(250)
-            }
+        while (isPlaying && playerReady) {
+            currentPos = runCatching { mediaPlayer?.currentPosition?.toFloat() ?: 0f }.getOrDefault(0f)
+            kotlinx.coroutines.delay(250)
         }
     }
 
+    fun resetPlayer() {
+        runCatching { mediaPlayer?.release() }
+        mediaPlayer = null
+        playerReady = false
+        isLoading = false
+        isPlaying = false
+    }
     fun initPlayer() {
-        if (mediaPlayer == null) {
-            try {
-                mediaPlayer = android.media.MediaPlayer().apply {
-                    setDataSource(context, android.net.Uri.parse(uriString))
-                    setOnPreparedListener { mp ->
-                        totalDuration = mp.duration
-                        mp.start()
-                        isPlaying = true
-                    }
-                    setOnErrorListener { _, _, _ ->
-                        isPlaying = false
-                        android.widget.Toast.makeText(context, "Cannot play audio. Permission denied or file missing.", android.widget.Toast.LENGTH_SHORT).show()
-                        true
-                    }
-                    prepareAsync()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                android.widget.Toast.makeText(context, "Cannot play audio. Permission denied or file missing.", android.widget.Toast.LENGTH_SHORT).show()
-                mediaPlayer?.release()
-                mediaPlayer = null
-                isPlaying = false
+        if (isLoading) return
+        audioError = false
+        try {
+            val existing = mediaPlayer
+            if (existing != null && playerReady) {
+                if (isPlaying) existing.pause() else existing.start()
+                isPlaying = !isPlaying
+                return
             }
-        } else {
-            mediaPlayer?.let { player ->
-                if (isPlaying) {
-                    player.pause()
-                    isPlaying = false
-                } else {
-                    player.start()
+            val player = android.media.MediaPlayer()
+            mediaPlayer = player
+            isLoading = true
+            player.setDataSource(context, android.net.Uri.parse(uriString))
+            player.setOnPreparedListener { ready ->
+                if (mediaPlayer === ready) {
+                    totalDuration = ready.duration
+                    playerReady = true
+                    isLoading = false
+                    ready.start()
                     isPlaying = true
                 }
             }
+            player.setOnCompletionListener {
+                isPlaying = false
+                currentPos = 0f
+                runCatching { it.seekTo(0) }
+            }
+            player.setOnErrorListener { _, _, _ ->
+                resetPlayer()
+                audioError = true
+                true
+            }
+            player.prepareAsync()
+        } catch (e: Exception) {
+            resetPlayer()
+            audioError = true
         }
     }
 
-    var showOptionsDialog by remember { mutableStateOf(false) }
+    var showOptionsDialog by remember(uriString) { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
@@ -726,12 +327,14 @@ fun AudioPlayerLayout(uriString: String, label: String) {
                         e.printStackTrace()
                     }
                 },
+                enabled = !isLoading,
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primary)
             ) {
-                Icon(
+                if (isLoading) CircularProgressIndicator(modifier = Modifier.size(22.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                else Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
                     tint = MaterialTheme.colorScheme.onPrimary,
@@ -749,6 +352,9 @@ fun AudioPlayerLayout(uriString: String, label: String) {
                 ) {
                     Text(
                         text = label,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -766,14 +372,17 @@ fun AudioPlayerLayout(uriString: String, label: String) {
                     )
                 }
 
+                if (audioError) Text(androidx.compose.ui.res.stringResource(com.omninote.R.string.audio_unavailable),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Slider(
                     value = currentPos,
                     onValueChange = { newVal ->
                         currentPos = newVal
-                        mediaPlayer?.seekTo(newVal.toInt())
+                        if (playerReady) runCatching { mediaPlayer?.seekTo(newVal.toInt()) }
                     },
+                    enabled = playerReady && !isLoading,
                     valueRange = 0f..(if (totalDuration > 0) totalDuration.toFloat() else 100f),
                     colors = SliderDefaults.colors(
                         thumbColor = MaterialTheme.colorScheme.primary,
@@ -1202,7 +811,7 @@ fun AttachmentOptionsDialog(
     val mimeType = remember(uriString, filename) { getMimeType(uriString, filename) }
     val isApk = remember(filename) { filename.lowercase().endsWith(".apk") }
 
-    AlertDialog(
+    OmniConfirmDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(
@@ -1216,7 +825,9 @@ fun AttachmentOptionsDialog(
         },
         title = {
             Text(
-                text = filename.ifEmpty { "Attachment Options" },
+                text = filename.ifEmpty { "Attachment options" },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
@@ -1299,7 +910,7 @@ fun AttachmentOptionsDialog(
                 ) {
                     Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isApk) "Open as File (View Contents)" else "Open in External App", fontWeight = FontWeight.Bold)
+                    Text(if (isApk) "Open as File (View Contents)" else "Open with another app", fontWeight = FontWeight.Bold)
                 }
 
                 OutlinedButton(
@@ -1332,7 +943,7 @@ fun AttachmentOptionsDialog(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Share/Send to App", fontWeight = FontWeight.Bold)
+                    Text("Share attachment", fontWeight = FontWeight.Bold)
                 }
 
                 TextButton(
@@ -1345,3 +956,4 @@ fun AttachmentOptionsDialog(
         }
     )
 }
+
