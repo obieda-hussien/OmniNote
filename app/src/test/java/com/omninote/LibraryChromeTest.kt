@@ -58,14 +58,26 @@ class LibraryChromeTest {
         val viewModel = NotesViewModel(NoteRepository(dao))
         var newNotes = 0
         var imeVisible = false
+        lateinit var host: android.view.View
         compose.setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 MyApplicationTheme {
+                    host = androidx.compose.ui.platform.LocalView.current
                     imeVisible = WindowInsets.isImeVisible
                     NotesListScreen(viewModel, onNavigateToAddNote = { newNotes++ }, onNavigateToEditNote = {})
                 }
             }
         }
+        // Android 11's Robolectric window starts with an empty, visible IME source.
+        // Dispatch a real hidden-IME inset rather than bypassing the screen's keyboard logic.
+        compose.runOnIdle {
+            androidx.core.view.ViewCompat.dispatchApplyWindowInsets(host,
+                androidx.core.view.WindowInsetsCompat.Builder()
+                    .setInsets(androidx.core.view.WindowInsetsCompat.Type.ime(), androidx.core.graphics.Insets.NONE)
+                    .setVisible(androidx.core.view.WindowInsetsCompat.Type.ime(), false)
+                    .build())
+        }
+        compose.waitUntil(10000) { !imeVisible }
         compose.waitUntil(10000) { compose.onAllNodesWithTag("note_library_grid").fetchSemanticsNodes().isNotEmpty() }
         val before = compose.onRoot().printToString().take(6000)
         val bounds = compose.onNodeWithTag("note_library_grid").fetchSemanticsNode().boundsInRoot
