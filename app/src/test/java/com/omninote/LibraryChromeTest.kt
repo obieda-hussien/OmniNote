@@ -34,7 +34,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [30], qualifiers = "w360dp-h800dp")
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 class LibraryChromeTest {
     @Before fun setup() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     @After fun cleanup() { Dispatchers.resetMain() }
@@ -57,18 +57,26 @@ class LibraryChromeTest {
         val dao = FixedDao()
         val viewModel = NotesViewModel(NoteRepository(dao))
         var newNotes = 0
+        var imeVisible = false
         compose.setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 MyApplicationTheme {
+                    imeVisible = WindowInsets.isImeVisible
                     NotesListScreen(viewModel, onNavigateToAddNote = { newNotes++ }, onNavigateToEditNote = {})
                 }
             }
         }
         compose.waitUntil(10000) { compose.onAllNodesWithTag("note_library_grid").fetchSemanticsNodes().isNotEmpty() }
+        val before = compose.onRoot().printToString().take(6000)
+        val bounds = compose.onNodeWithTag("note_library_grid").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("note_library_grid").performTouchInput { swipeUp() }
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
-        compose.waitUntil(10000) { compose.onAllNodesWithText("Omni Note").fetchSemanticsNodes().isEmpty() }
+        try {
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Omni Note").fetchSemanticsNodes().isEmpty() }
+        } catch (error: Throwable) {
+            throw AssertionError("IME=$imeVisible Grid=$bounds\nBefore:\n$before\nAfter:\n${compose.onRoot().printToString().take(6000)}", error)
+        }
         compose.onNodeWithText("Omni Note").assertDoesNotExist()
         compose.onNodeWithText("Active").assertDoesNotExist()
         compose.onNodeWithContentDescription("Search notes").assertIsDisplayed()
