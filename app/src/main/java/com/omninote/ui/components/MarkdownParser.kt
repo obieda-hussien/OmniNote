@@ -13,6 +13,10 @@ object NoteMarkdownParser {
         .includeSourceSpans(IncludeSourceSpans.BLOCKS_AND_INLINES)
         .build()
     fun parse(source: String): Node = parser.parse(source)
+    fun parseDocument(source: String): PreviewDocument {
+        val compatible = compatiblePreviewSource(source)
+        return PreviewDocument(parser.parse(compatible.lines.joinToString("\n")), compatible.lines, compatible.sourceLines)
+    }
     fun preview(source: String): String {
         val result = StringBuilder()
         fun append(node: Node) {
@@ -35,7 +39,7 @@ object NoteMarkdownParser {
             }
             if (node is org.commonmark.node.Paragraph || node is org.commonmark.node.Heading) result.append('\n')
         }
-        append(parse(source.take(8000)))
+        append(parseDocument(source.take(8000)).root)
         return result.toString().trim().take(1000)
     }
 }

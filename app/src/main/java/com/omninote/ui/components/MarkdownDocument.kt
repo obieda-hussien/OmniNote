@@ -28,11 +28,11 @@ fun MarkdownDocumentPreview(
     listState: LazyListState = rememberLazyListState(),
     onCheckedChange: ((Int, Boolean) -> Unit)? = null
 ) {
-    val document by produceState<Node?>(null, rawText) {
+    val document by produceState<PreviewDocument?>(null, rawText) {
         value = null
-        value = withContext(Dispatchers.Default) { NoteMarkdownParser.parse(rawText) }
+        value = withContext(Dispatchers.Default) { NoteMarkdownParser.parseDocument(rawText) }
     }
-    val lines = remember(rawText) { rawText.split('\n') }
+
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (title.isNotBlank()) item {
@@ -43,7 +43,13 @@ fun MarkdownDocumentPreview(
             Text("Your preview will appear here", color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 48.dp))
         } else if (document == null) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-        items(document?.children() ?: emptyList()) { block -> MarkdownBlock(block, lines, onCheckedChange) }
+        items(document?.root?.children() ?: emptyList()) { block ->
+            document?.let { parsed ->
+                MarkdownBlock(block, parsed.lines, onCheckedChange?.let { callback ->
+                    { line, checked -> callback(parsed.originalLine(line), checked) }
+                })
+            }
+        }
     }
 }
 
@@ -64,21 +70,7 @@ internal fun MarkdownBlock(node: Node, lines: List<String>, onCheckedChange: ((I
             InteractiveText(markdownInline(node, primary, secondary), style.copy(fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface), Modifier.padding(top = 8.dp))
         }
-        is Paragraph -> {
-            // App attachments remain compatible with saved notes.
-            val source = node.sourceText(lines).trim()
-            val audio = Regex("""^\[(?:audio|voice)(?::(.*?))?\]\((.*?)\)$""").matchEntire(source)
-            val file = Regex("""^\[file(?::(.*?))?\]\((.*?)\)$""").matchEntire(source)
-            val image = node.firstChild as? Image
-            when {
-                audio != null -> AudioPlayerLayout(audio.groupValues[2], audio.groupValues[1].ifBlank { "Voice recording" })
-                file != null -> FileAttachmentLayout(file.groupValues[2], file.groupValues[1].ifBlank { "Attachment" })
-                image != null && image.next == null -> ImageLayout(image.destination, markdownInline(image, primary, secondary).text)
-                else -> InteractiveText(
-                    if (source.contains("[color:") || source.contains("[bg:") || source.contains("==")) parseInlineStyles(source, primary, secondary)
-                    else markdownInline(node, primary, secondary), bodyStyle)
-            }
-        }
+        is Paragraph -> MarkdownParagraph(node, lines, bodyStyle)
         is FencedCodeBlock -> CodeBlockLayout(node.literal, node.info.ifBlank { "code" })
         is IndentedCodeBlock -> CodeBlockLayout(node.literal, "code")
         is ThematicBreak -> HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -111,36 +103,33 @@ internal fun MarkdownBlock(node: Node, lines: List<String>, onCheckedChange: ((I
                 }
             }
         }
-        is TableBlock -> {
-            val rows = node.children().flatMap { it.children() }
-            val columnCount = rows.maxOfOrNull { it.children().size } ?: 0
-            Column(Modifier.horizontalScroll(rememberScrollState())) {
-                rows.forEach { row ->
-                    Row(Modifier.height(IntrinsicSize.Min)) {
-                        repeat(columnCount) { column ->
-                            val cell = row.children().getOrNull(column) as? TableCell
-                            Surface(
-                                modifier = Modifier.width(180.dp).heightIn(min = 52.dp).fillMaxHeight(),
-                                color = if (cell?.isHeader == true) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLow
-                            ) {
-                                InteractiveText(cell?.let { markdownInline(it, primary, secondary) } ?: androidx.compose.ui.text.AnnotatedString(""),
-                                    bodyStyle.copy(fontWeight = if (cell?.isHeader == true) FontWeight.SemiBold else FontWeight.Normal,
-                                        textAlign = when (cell?.alignment?.name) {
-                                            "CENTER" -> androidx.compose.ui.text.style.TextAlign.Center
-                                            "RIGHT" -> androidx.compose.ui.text.style.TextAlign.End
-                                            else -> androidx.compose.ui.text.style.TextAlign.Start
-                                        }),
-                                    Modifier.padding(12.dp))
-                            }
-                        }
-                    }
-                    HorizontalDivider()
-                }
-            }
-        }
+        is TableBlock -> MarkdownTable(node)
         is HtmlBlock -> Text(node.literal, style = bodyStyle) // Raw HTML stays visible, never executable.
         else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             node.children().forEach { MarkdownBlock(it, lines, onCheckedChange) }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownParagraph(node: Paragraph, lines: List<String>, style: androidx.compose.ui.text.TextStyle) {
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val parts = remember(node) { paragraphParts(node) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        for (part in parts) {
+            when (part) {
+                is ParagraphPart.Photo -> ImageLayout(part.uri, part.description)
+                is ParagraphPart.Audio -> AudioPlayerLayout(part.uri, part.label)
+                is ParagraphPart.File -> FileAttachmentLayout(part.uri, part.label)
+                is ParagraphPart.TextRun -> {
+                    val source = node.sourceText(lines)
+                    InteractiveText(
+                        if (parts.size == 1 && (source.contains("[color:") || source.contains("[bg:") || source.contains("==")))
+                            parseInlineStyles(source, primary, secondary)
+                        else markdownInlineNodes(part.nodes, primary, secondary), style)
+                }
+            }
         }
     }
 }

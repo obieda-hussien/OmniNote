@@ -27,6 +27,11 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import com.omninote.ui.components.NoteLibraryHeader
+import com.omninote.ui.components.NoteCaptureBar
+import com.omninote.ui.components.LibraryChromeState
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import com.omninote.ui.components.OmniSheet
 import com.omninote.ui.components.OmniConfirmDialog
 import com.omninote.ui.components.noteSurface
@@ -576,15 +581,50 @@ fun NotesListScreen(
     val audioNotesCount = notes.count { it.content.contains("[voice:") || it.content.contains("[audio:") }
 
     val isImeVisible = WindowInsets.isImeVisible
-    val bottomOffset by androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (!isImeVisible) 96.dp else 0.dp,
-        animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-    )
+    val density = LocalDensity.current
+    val chrome = remember { LibraryChromeState() }
+    var footerHeight by remember { mutableStateOf(0.dp) }
+    val atTop by remember(isGridView, pagerState.currentPage) {
+        derivedStateOf {
+            if (isGridView) {
+                val state = when (pagerState.currentPage) { 0 -> gridState0; 1 -> gridState1; else -> gridState2 }
+                state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset == 0
+            } else {
+                val state = when (pagerState.currentPage) { 0 -> listState0; 1 -> listState1; else -> listState2 }
+                state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset == 0
+            }
+        }
+    }
+    LaunchedEffect(pagerState.currentPage, isGridView) { chrome.show() }
+    val topNow by rememberUpdatedState(atTop)
+    val imeNow by rememberUpdatedState(isImeVisible)
+    val scrollConnection = remember(chrome, density) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (!imeNow) chrome.scroll(consumed.y, topNow, with(density) { 32.dp.toPx() })
+                return Offset.Zero
+            }
+        }
+    }
+    fun saveQuickCapture() {
+        if (quickCaptureText.isBlank() || quickCaptureSaving) return
+        val captured = quickCaptureText.trim()
+        quickCaptureSaving = true
+        scope.launch {
+            try {
+                viewModel.createQuickNote(captured)
+                if (quickCaptureText.trim() == captured) quickCaptureText = ""
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            } catch (e: Exception) { snackbarHostState.showSnackbar("Couldn't save. Try again.") }
+            finally { quickCaptureSaving = false }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier
-                .fillMaxSize(),
+                .fillMaxSize().imePadding(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(snackbarHostState) { snackbarData ->
                 Surface(
@@ -670,18 +710,32 @@ fun NotesListScreen(
                 grid = isGridView,
                 onLayoutChange = { isGridView = !isGridView },
                 onFilter = { showSortBottomSheet = true },
-                onStats = { showStatsDashboard = true }
+                onStats = { showStatsDashboard = true },
+                expanded = chrome.expanded,
+                onExpand = { chrome.show() },
+                filtersActive = selectedTag != null || filterPinnedOnly || sortBy != "newest"
             )
         },
         bottomBar = {
+            Column(Modifier.navigationBarsPadding().onSizeChanged { footerHeight = with(density) { it.height.toDp() } }) {
+                if (currentTab == "ACTIVE") NoteCaptureBar(quickCaptureText, { quickCaptureText = it },
+                    quickCaptureSaving, ::saveQuickCapture, onNavigateToAddNote)
+                else if (currentTab == "TRASHED" && notes.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { showEmptyTrashDialog = true }) {
+                            CanvasCustomIcon(CanvasIconType.DELETE, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.empty_trash_title))
+                        }
+                    }
+                }
             AnimatedVisibility(
-                visible = !isImeVisible,
-                enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
-                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                visible = chrome.expanded && !isImeVisible,
+                enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(180)),
+                exit = shrinkVertically(animationSpec = tween(180)) + fadeOut(animationSpec = tween(180))
             ) {
                 Box(
                     modifier = Modifier
-                        .navigationBarsPadding()
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                         .clip(RoundedCornerShape(24.dp))
@@ -696,7 +750,7 @@ fun NotesListScreen(
                         containerColor = Color.Transparent,
                         tonalElevation = 0.dp,
                         windowInsets = WindowInsets(0, 0, 0, 0),
-                        modifier = Modifier.height(80.dp)
+                        modifier = Modifier.height(64.dp)
                     ) {
                         NavigationBarItem(
                             icon = { CanvasActiveTabIcon(isSelected = currentTab == "ACTIVE") },
@@ -748,6 +802,7 @@ fun NotesListScreen(
                     }
                 }
             }
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
@@ -757,7 +812,9 @@ fun NotesListScreen(
                 .padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
         ) {
             // Dynamic Tag / Category filter carousel
-            if (allTags.isNotEmpty()) {
+            AnimatedVisibility(visible = allTags.isNotEmpty() && chrome.expanded,
+                enter = expandVertically(tween(180)) + fadeIn(tween(180)),
+                exit = shrinkVertically(tween(180)) + fadeOut(tween(140))) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -949,8 +1006,8 @@ fun NotesListScreen(
                             else -> StaggeredGridCells.Fixed(4)
                         }
                         val gridContentPadding = when {
-                            screenWidthDp < 360 -> PaddingValues(top = 12.dp, bottom = 100.dp, start = 12.dp, end = 12.dp)
-                            else -> PaddingValues(top = 16.dp, bottom = 100.dp, start = 16.dp, end = 16.dp)
+                            screenWidthDp < 360 -> PaddingValues(top = 12.dp, bottom = 16.dp, start = 12.dp, end = 12.dp)
+                            else -> PaddingValues(top = 16.dp, bottom = 16.dp, start = 16.dp, end = 16.dp)
                         }
                         val gridSpacing = if (screenWidthDp < 360) 12.dp else 16.dp
 
@@ -964,7 +1021,7 @@ fun NotesListScreen(
                             contentPadding = gridContentPadding,
                             horizontalArrangement = Arrangement.spacedBy(gridSpacing),
                             verticalItemSpacing = gridSpacing,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize().nestedScroll(scrollConnection).testTag("note_library_grid")
                         ) {
                             itemsIndexed(pageFilteredAndSortedNotes, key = { _, note -> note.id }) { index, note ->
                                 NoteCard(
@@ -1017,9 +1074,9 @@ fun NotesListScreen(
                                 1 -> listState1
                                 else -> listState2
                             },
-                            contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp, start = 16.dp, end = 16.dp),
+                            contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp, start = 16.dp, end = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize().nestedScroll(scrollConnection).testTag("note_library_list")
                         ) {
                             itemsIndexed(pageFilteredAndSortedNotes, key = { _, note -> note.id }) { index, note ->
                                 val dismissState = rememberSwipeToDismissBoxState(
@@ -1890,8 +1947,7 @@ fun NotesListScreen(
         visible = snackbarVisible,
         modifier = Modifier
             .align(Alignment.BottomCenter)
-            .padding(bottom = 80.dp, start = 16.dp, end = 16.dp)
-            .navigationBarsPadding(),
+            .padding(bottom = footerHeight + 8.dp, start = 16.dp, end = 16.dp),
         enter = slideInVertically(
             initialOffsetY = { it },
             animationSpec = spring(
@@ -2067,146 +2123,6 @@ fun NotesListScreen(
         }
     }
 
-    // ------------------ FLOATING ACTION BUTTON (FAB) & QUICK CAPTURE BAR OVERLAYS ------------------
-
-    // FAB Overlay
-    AnimatedVisibility(
-        visible = !isImeVisible,
-        enter = fadeIn() + scaleIn(),
-        exit = fadeOut() + scaleOut(),
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .navigationBarsPadding()
-            .padding(
-                end = 24.dp,
-                // When ACTIVE, move the FAB up to make room for the full-width Quick Capture bar
-                bottom = if (currentTab == "ACTIVE") bottomOffset + 88.dp else bottomOffset + 16.dp
-            )
-    ) {
-        if (currentTab == "ACTIVE") {
-            ExtendedFloatingActionButton(
-                text = {
-                    Text(
-                        text = "New Note",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                icon = {
-                    CanvasCustomIcon(
-                        type = CanvasIconType.EDIT
-                    )
-                },
-                onClick = onNavigateToAddNote,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = RoundedCornerShape(20.dp),
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 6.dp,
-                    pressedElevation = 2.dp,
-                    hoveredElevation = 8.dp
-                )
-            )
-        } else if (currentTab == "TRASHED" && notes.isNotEmpty()) {
-            ExtendedFloatingActionButton(
-                text = {
-                    Text(
-                        text = "Empty",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                icon = {
-                    CanvasCustomIcon(
-                        type = CanvasIconType.DELETE
-                    )
-                },
-                onClick = { showEmptyTrashDialog = true },
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                shape = RoundedCornerShape(20.dp),
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 6.dp,
-                    pressedElevation = 2.dp
-                )
-            )
-        }
-    }
-
-    // Quick Capture Bar Overlay
-    AnimatedVisibility(
-        visible = currentTab == "ACTIVE",
-        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .navigationBarsPadding()
-            .imePadding()
-            .padding(
-                start = 16.dp,
-                end = 16.dp, // Full width
-                bottom = if (isImeVisible) 8.dp else (bottomOffset + 12.dp) // Sit above bottom nav when closed, and right above keyboard when open
-            )
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-            shadowElevation = 8.dp
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = quickCaptureText,
-                    onValueChange = { quickCaptureText = it },
-                    placeholder = {
-                        Text(
-                            "Jot a quick note...",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent
-                    ),
-                    maxLines = 3
-                )
-                IconButton(
-                    onClick = {
-                        if (quickCaptureText.isNotBlank() && !quickCaptureSaving) {
-                            val captured = quickCaptureText.trim()
-                            quickCaptureSaving = true
-                            scope.launch {
-                                try {
-                                    viewModel.createQuickNote(captured)
-                                    if (quickCaptureText.trim() == captured) quickCaptureText = ""
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar("Couldn't save. Try again.")
-                                } finally { quickCaptureSaving = false }
-                            }
-                        }
-                    },
-                    enabled = quickCaptureText.isNotBlank() && !quickCaptureSaving,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(if (quickCaptureText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
-                ) {
-                    CanvasCustomIcon(
-                        CanvasIconType.TICK,
-                        modifier = Modifier.size(20.dp),
-                        tint = if (quickCaptureText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
     } // closes Box
 }
 

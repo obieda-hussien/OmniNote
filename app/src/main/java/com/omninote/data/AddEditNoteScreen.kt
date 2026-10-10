@@ -144,7 +144,7 @@ fun AddEditNoteScreen(
                 val internalUri = copyUriToInternalStorage(context, uri, "shared_file")
 
                 if (mimeType.startsWith("image/")) {
-                     buffer.insert("\n![Shared Image]($internalUri)\n")
+                     buffer.insert("\n\n![Shared Image]($internalUri)\n\n")
                 } else {
                      var displayFileName = "Shared_File"
                      try {
@@ -158,9 +158,9 @@ fun AddEditNoteScreen(
                      } catch (e: Exception) {}
 
                      if (mimeType.startsWith("audio/")) {
-                         buffer.insert("\n[voice:$internalUri]($internalUri)\n")
+                         buffer.insert("\n\n[voice:$internalUri]($internalUri)\n\n")
                      } else {
-                         buffer.insert("\n[file:$displayFileName]($internalUri)\n")
+                         buffer.insert("\n\n[file:$displayFileName]($internalUri)\n\n")
                      }
                 }
             }
@@ -187,7 +187,7 @@ fun AddEditNoteScreen(
         uri?.let {
             coroutineScope.launch {
                 val internalUri = copyUriToInternalStorage(context, it, "image.jpg")
-                buffer.insert("\n![Image]($internalUri)\n")
+                buffer.insert("\n\n![Image]($internalUri)\n\n")
             }
         }
     }
@@ -209,7 +209,7 @@ fun AddEditNoteScreen(
                 } catch (e: Exception) {}
 
                 val internalUri = copyUriToInternalStorage(context, it, displayFileName)
-                buffer.insert("\n[file:$displayFileName]($internalUri)\n")
+                buffer.insert("\n\n[file:$displayFileName]($internalUri)\n\n")
             }
         }
     }
@@ -1594,7 +1594,7 @@ fun AddEditNoteScreen(
                                     mediaRecorder = null
                                     isRecordingAudio = false
                                     tempAudioFile?.let {
-                                        buffer.insert("\n[voice:Voice Recording ${System.currentTimeMillis() % 1000}](${android.net.Uri.fromFile(it)})\n")
+                                        buffer.insert("\n\n[voice:Voice Recording ${System.currentTimeMillis() % 1000}](${android.net.Uri.fromFile(it)})\n\n")
                                     }
                                     showVoiceRecorderDialog = false
                                     recordTimeSeconds = 0
@@ -2003,10 +2003,10 @@ fun AddEditNoteScreen(
                         }
                         Button(
                             onClick = {
-                                val cols = tableColumnsCount.toIntOrNull() ?: 2
-                                val rows = tableRowsCount.toIntOrNull() ?: 3
+                                val cols = (tableColumnsCount.toIntOrNull() ?: 2).coerceIn(1, 12)
+                                val rows = (tableRowsCount.toIntOrNull() ?: 3).coerceIn(1, 100)
                                 val sb = java.lang.StringBuilder()
-                                sb.append("\n|")
+                                sb.append("\n\n|")
                                 for (c in 1..cols) { sb.append(" Header $c |") }
                                 sb.append("\n|")
                                 for (c in 1..cols) { sb.append("---|") }

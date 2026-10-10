@@ -10,7 +10,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import org.commonmark.node.*
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
 
-internal fun markdownInline(node: Node, primary: Color, secondary: Color): AnnotatedString {
+internal fun markdownInline(node: Node, primary: Color, secondary: Color): AnnotatedString =
+    markdownInlineNodes(node.children(), primary, secondary)
+
+internal fun markdownInlineNodes(nodes: List<Node>, primary: Color, secondary: Color): AnnotatedString {
     val builder = AnnotatedString.Builder()
     fun render(current: Node) {
         val style = when (current) {
@@ -37,7 +40,7 @@ internal fun markdownInline(node: Node, primary: Color, secondary: Color): Annot
         if (safeLink != null) builder.pop()
         if (style != null) builder.pop()
     }
-    node.children().forEach { render(it) }
+    nodes.forEach { render(it) }
     return builder.toAnnotatedString()
 }
 

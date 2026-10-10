@@ -103,8 +103,8 @@ class NoteDesignTest {
             }
         }
         compose.onNodeWithContentDescription("Clear search").performClick()
-        compose.onNodeWithText("List view").performClick()
-        compose.onNodeWithText("Sort & filter").performClick()
+        compose.onNodeWithContentDescription("List view").performClick()
+        compose.onNodeWithContentDescription("Sort & filter").performClick()
         compose.runOnIdle { assertTrue(cleared && switched && filtered) }
     }
 }

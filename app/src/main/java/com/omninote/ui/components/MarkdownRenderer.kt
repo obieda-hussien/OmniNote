@@ -121,10 +121,13 @@ fun MarkdownContent(
     rawText: String,
     onCheckedChange: ((lineIndex: Int, isChecked: Boolean) -> Unit)? = null
 ) {
-    val document = remember(rawText) { NoteMarkdownParser.parse(rawText) }
-    val lines = remember(rawText) { rawText.split('\n') }
+    val document = remember(rawText) { NoteMarkdownParser.parseDocument(rawText) }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        document.children().forEach { MarkdownBlock(it, lines, onCheckedChange) }
+        document.root.children().forEach { block ->
+            MarkdownBlock(block, document.lines, onCheckedChange?.let { callback ->
+                { line, checked -> callback(document.originalLine(line), checked) }
+            })
+        }
     }
 }
 
@@ -150,7 +153,7 @@ fun ImageLayout(uriString: String, description: String) {
                 contentDescription = description,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 240.dp),
+                    .heightIn(min = 120.dp, max = 240.dp),
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
             )
@@ -231,10 +234,13 @@ fun ImageLayout(uriString: String, description: String) {
 @Composable
 fun AudioPlayerLayout(uriString: String, label: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentPos by remember { mutableStateOf(0f) }
-    var totalDuration by remember { mutableStateOf(0) }
+    var mediaPlayer by remember(uriString) { mutableStateOf<android.media.MediaPlayer?>(null) }
+    var isPlaying by remember(uriString) { mutableStateOf(false) }
+    var currentPos by remember(uriString) { mutableStateOf(0f) }
+    var totalDuration by remember(uriString) { mutableStateOf(0) }
+    var isLoading by remember(uriString) { mutableStateOf(false) }
+    var playerReady by remember(uriString) { mutableStateOf(false) }
+    var audioError by remember(uriString) { mutableStateOf(false) }
 
     // Auto-dispose player
     DisposableEffect(uriString) {
@@ -243,65 +249,61 @@ fun AudioPlayerLayout(uriString: String, label: String) {
         }
     }
 
-    // Launch progress updater
     LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (isPlaying && mediaPlayer != null) {
-                try {
-                    val pos = mediaPlayer?.currentPosition ?: 0
-                    currentPos = pos.toFloat()
-                    if (pos >= totalDuration - 250 && totalDuration > 0) {
-                        isPlaying = false
-                        currentPos = 0f
-                        mediaPlayer?.seekTo(0)
-                        mediaPlayer?.pause()
-                    }
-                } catch (e: Exception) {
-                    // Ignore transient exceptions
-                }
-                kotlinx.coroutines.delay(250)
-            }
+        while (isPlaying && playerReady) {
+            currentPos = runCatching { mediaPlayer?.currentPosition?.toFloat() ?: 0f }.getOrDefault(0f)
+            kotlinx.coroutines.delay(250)
         }
     }
 
+    fun resetPlayer() {
+        runCatching { mediaPlayer?.release() }
+        mediaPlayer = null
+        playerReady = false
+        isLoading = false
+        isPlaying = false
+    }
     fun initPlayer() {
-        if (mediaPlayer == null) {
-            try {
-                mediaPlayer = android.media.MediaPlayer().apply {
-                    setDataSource(context, android.net.Uri.parse(uriString))
-                    setOnPreparedListener { mp ->
-                        totalDuration = mp.duration
-                        mp.start()
-                        isPlaying = true
-                    }
-                    setOnErrorListener { _, _, _ ->
-                        isPlaying = false
-                        android.widget.Toast.makeText(context, "Cannot play audio. Permission denied or file missing.", android.widget.Toast.LENGTH_SHORT).show()
-                        true
-                    }
-                    prepareAsync()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                android.widget.Toast.makeText(context, "Cannot play audio. Permission denied or file missing.", android.widget.Toast.LENGTH_SHORT).show()
-                mediaPlayer?.release()
-                mediaPlayer = null
-                isPlaying = false
+        if (isLoading) return
+        audioError = false
+        try {
+            val existing = mediaPlayer
+            if (existing != null && playerReady) {
+                if (isPlaying) existing.pause() else existing.start()
+                isPlaying = !isPlaying
+                return
             }
-        } else {
-            mediaPlayer?.let { player ->
-                if (isPlaying) {
-                    player.pause()
-                    isPlaying = false
-                } else {
-                    player.start()
+            val player = android.media.MediaPlayer()
+            mediaPlayer = player
+            isLoading = true
+            player.setDataSource(context, android.net.Uri.parse(uriString))
+            player.setOnPreparedListener { ready ->
+                if (mediaPlayer === ready) {
+                    totalDuration = ready.duration
+                    playerReady = true
+                    isLoading = false
+                    ready.start()
                     isPlaying = true
                 }
             }
+            player.setOnCompletionListener {
+                isPlaying = false
+                currentPos = 0f
+                runCatching { it.seekTo(0) }
+            }
+            player.setOnErrorListener { _, _, _ ->
+                resetPlayer()
+                audioError = true
+                true
+            }
+            player.prepareAsync()
+        } catch (e: Exception) {
+            resetPlayer()
+            audioError = true
         }
     }
 
-    var showOptionsDialog by remember { mutableStateOf(false) }
+    var showOptionsDialog by remember(uriString) { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
@@ -325,12 +327,14 @@ fun AudioPlayerLayout(uriString: String, label: String) {
                         e.printStackTrace()
                     }
                 },
+                enabled = !isLoading,
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primary)
             ) {
-                Icon(
+                if (isLoading) CircularProgressIndicator(modifier = Modifier.size(22.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                else Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
                     tint = MaterialTheme.colorScheme.onPrimary,
@@ -348,6 +352,9 @@ fun AudioPlayerLayout(uriString: String, label: String) {
                 ) {
                     Text(
                         text = label,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -365,14 +372,17 @@ fun AudioPlayerLayout(uriString: String, label: String) {
                     )
                 }
 
+                if (audioError) Text(androidx.compose.ui.res.stringResource(com.omninote.R.string.audio_unavailable),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Slider(
                     value = currentPos,
                     onValueChange = { newVal ->
                         currentPos = newVal
-                        mediaPlayer?.seekTo(newVal.toInt())
+                        if (playerReady) runCatching { mediaPlayer?.seekTo(newVal.toInt()) }
                     },
+                    enabled = playerReady && !isLoading,
                     valueRange = 0f..(if (totalDuration > 0) totalDuration.toFloat() else 100f),
                     colors = SliderDefaults.colors(
                         thumbColor = MaterialTheme.colorScheme.primary,

@@ -16,5 +16,14 @@
     <string name="list_view">List view</string>
     <string name="grid_view">Grid view</string>
     <string name="sort_filter">Sort &amp; filter</string>
+    <string name="markdown_table">Table</string>
+    <string name="table_dimensions">%1$d rows · %2$d columns</string>
+    <string name="table_scroll_hint">Swipe sideways to see all columns</string>
+    <string name="loading_audio">Loading audio</string>
+    <string name="audio_unavailable">Audio could not be opened. Tap play to retry.</string>
+    <string name="new_note">New note</string>
+    <string name="quick_note">Quick note</string>
+    <string name="save_quick_note">Save quick note</string>
+    <string name="show_library_navigation">Show library navigation</string>
 </resources>
 
