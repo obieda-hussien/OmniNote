@@ -9,6 +9,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import org.json.JSONArray
+import com.omninote.ui.components.OmniIcon
+import com.omninote.ui.components.OmniIconType
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,10 +30,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import com.omninote.ui.components.OmniSheet
+import com.omninote.ui.components.OmniConfirmDialog
+import com.omninote.ui.components.noteSurface
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +49,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalContext
@@ -54,10 +62,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.omninote.data.NoteEntity
-import com.omninote.ui.components.MarkdownContent
+import com.omninote.ui.components.MarkdownDocumentPreview
 import com.omninote.ui.viewmodels.NotesViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.lazy.rememberLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -66,107 +80,72 @@ fun AddEditNoteScreen(
     viewModel: NotesViewModel,
     onNavigateBack: () -> Unit
 ) {
+    val density = LocalDensity.current
+    var editorDockHeight by remember { mutableStateOf(72.dp) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val allNotes by viewModel.allNotes.collectAsStateWithLifecycle()
-    val existingNote = remember(noteId, allNotes) {
-        allNotes.find { it.id == noteId }
-    }
+    val draft = remember(noteId, viewModel) { viewModel.editorDraft(noteId) }
+    val buffer = draft.buffer
+    val existingNote = draft.base
+    var title by draft::title
+    var content by buffer::text
+    var contentValue by buffer::value
+    var isPinned by draft::isPinned
+    var selectedColor by draft::colorHex
+    var activeTagsList by draft::tags
+    var isLocked by draft::isLocked
+    var lockPin by draft::lockPin
+    var isPreviewMode by draft::isPreview
+    val previewScroll = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
+    val snackbar = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    var title by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
-    var contentValue by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
-    
-    var undoStack by remember { mutableStateOf(listOf<String>()) }
-    var redoStack by remember { mutableStateOf(listOf<String>()) }
-    
-    LaunchedEffect(content) {
-        if (contentValue.text != content) {
-            try {
-                contentValue = contentValue.copy(
-                    text = content,
-                    selection = androidx.compose.ui.text.TextRange(content.length)
-                )
-            } catch (e: Exception) {
-                contentValue = androidx.compose.ui.text.input.TextFieldValue(
-                    text = content,
-                    selection = androidx.compose.ui.text.TextRange(content.length)
-                )
+    LaunchedEffect(draft) { viewModel.loadDraft(draft) }
+    val snapshot = draft.snapshot()
+    LaunchedEffect(snapshot, draft.loaded) {
+        if (draft.dirty && !draft.closing) {
+            delay(700)
+            runCatching { viewModel.saveDraft(draft) }
+        }
+    }
+    LaunchedEffect(draft.error) {
+        draft.error?.let {
+            if (snackbar.showSnackbar(it, actionLabel = "Retry", duration = SnackbarDuration.Indefinite) == SnackbarResult.ActionPerformed) {
+                if (draft.loaded) viewModel.persistDraft(draft) else viewModel.loadDraft(draft)
             }
         }
-        delay(600)
-        if (undoStack.isEmpty() || undoStack.last() != content) {
-            val newList = undoStack + content
-            undoStack = if (newList.size > 100) newList.drop(1) else newList
-        }
     }
-
-    var isPinned by remember { mutableStateOf(false) }
-    var selectedColor by remember { mutableStateOf<String?>(null) }
-    var activeTagsList by remember { mutableStateOf<List<String>>(emptyList()) }
-    var isLocked by remember { mutableStateOf(false) }
-    var lockPin by remember { mutableStateOf<String?>(null) }
-
-    // Tab state: false = Edit Mode, true = Preview Mode
-    var isPreviewMode by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner, draft) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.persistDraft(draft)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Bottom Sheet State for Note Settings (Vibe, Tags, Analytics)
     var showSettingsSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var isInitialized by remember(noteId) { mutableStateOf(false) }
-
-    // Initialize states once when existingNote is loaded
-    LaunchedEffect(existingNote) {
-        if (existingNote != null && !isInitialized) {
-            title = existingNote.title
-            content = existingNote.content
-            isPinned = existingNote.isPinned
-            selectedColor = existingNote.colorHex
-            isLocked = existingNote.isLocked
-            lockPin = existingNote.lockPin
-            activeTagsList = existingNote.tags.split(",")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-            isInitialized = true
-        }
-    }
-
-    LaunchedEffect(Unit) {
+    LaunchedEffect(draft, draft.loaded) {
+        if (!draft.loaded || draft.sharedConsumed) return@LaunchedEffect
+        draft.sharedConsumed = true
         if (viewModel.sharedText != null) {
             val text = viewModel.sharedText
             if (content.isEmpty()) {
                 content = text ?: ""
             } else {
-                content += "\n\n$text"
+                buffer.insert("\n\n$text")
             }
         }
-        if (viewModel.sharedUris != null) {
-            val uris = viewModel.sharedUris!!
-            uris.forEach { uri ->
-                val mimeType = context.contentResolver.getType(uri) ?: ""
-                val internalUri = copyUriToInternalStorage(context, uri, "shared_file")
-                
-                if (mimeType.startsWith("image/")) {
-                     content += "\n![Shared Image]($internalUri)\n"
-                } else {
-                     var displayFileName = "Shared_File"
-                     try {
-                         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                             val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                             if (nameIdx != -1 && cursor.moveToFirst()) {
-                                 val n = cursor.getString(nameIdx)
-                                 if(!n.isNullOrBlank()) displayFileName = n
-                             }
-                         }
-                     } catch (e: Exception) {}
-                     
-                     if (mimeType.startsWith("audio/")) {
-                         content += "\n[voice:$internalUri]($internalUri)\n"
-                     } else {
-                         content += "\n[file:$displayFileName]($internalUri)\n"
-                     }
-                }
+        viewModel.sharedUris.orEmpty().forEach { uri ->
+            try {
+                val attachment = importAttachment(context, uri, "Shared file")
+                buffer.insert("\n\n$attachment\n\n")
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                snackbar.showSnackbar("Could not attach this file. Please select it again.")
             }
         }
         viewModel.consumeSharedContent()
@@ -190,8 +169,12 @@ fun AddEditNoteScreen(
     ) { uri: android.net.Uri? ->
         uri?.let {
             coroutineScope.launch {
-                val internalUri = copyUriToInternalStorage(context, it, "image.jpg")
-                content += "\n![Image]($internalUri)\n"
+                try {
+                    buffer.insert("\n\n${importAttachment(context, it, "Image")}\n\n")
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    snackbar.showSnackbar("Could not attach this image. Please select it again.")
+                }
             }
         }
     }
@@ -201,19 +184,12 @@ fun AddEditNoteScreen(
     ) { uri: android.net.Uri? ->
         uri?.let {
             coroutineScope.launch {
-                var displayFileName = "Attached_File"
                 try {
-                    context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
-                        val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (nameIdx != -1 && cursor.moveToFirst()) {
-                            val n = cursor.getString(nameIdx)
-                            if (!n.isNullOrBlank()) displayFileName = n
-                        }
-                    }
-                } catch (e: Exception) {}
-                
-                val internalUri = copyUriToInternalStorage(context, it, displayFileName)
-                content += "\n[file:$displayFileName]($internalUri)\n"
+                    buffer.insert("\n\n${importAttachment(context, it, "Attachment")}\n\n")
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    snackbar.showSnackbar("Could not attach this file. Please select it again.")
+                }
             }
         }
     }
@@ -296,6 +272,9 @@ fun AddEditNoteScreen(
         speechRecognizer.setRecognitionListener(recognitionListener)
         onDispose {
             speechRecognizer.destroy()
+            runCatching { mediaRecorder?.stop() }
+            mediaRecorder?.release()
+            mediaRecorder = null
         }
     }
 
@@ -324,7 +303,7 @@ fun AddEditNoteScreen(
     fun localRefineText(text: String): String {
         var refined = text.trim()
         if (refined.isEmpty()) return ""
-        
+
         // Replace spoken punctuation words in both Arabic and English
         val replacements = mapOf(
             "نقطة" to ".",
@@ -338,18 +317,18 @@ fun AddEditNoteScreen(
             "new line" to "\n",
             "next line" to "\n"
         )
-        
+
         for ((key, value) in replacements) {
             refined = refined.replace(Regex("(?i)\\b$key\\b"), value)
         }
-        
+
         // Capitalize English sentences
         refined = refined.split(Regex("(?<=[.!?\\n])\\s+"))
             .map { sentence ->
                 sentence.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
             }
             .joinToString(" ")
-            
+
         // Clean up spacing
         refined = refined
             .replace(Regex(" +"), " ")
@@ -360,7 +339,7 @@ fun AddEditNoteScreen(
             .replace(" ؟", "؟")
             .replace("\n ", "\n")
             .replace(" \n", "\n")
-            
+
         return refined.trim()
     }
 
@@ -369,29 +348,29 @@ fun AddEditNoteScreen(
         if (apiKey.isBlank() || apiKey == "YOUR_API_KEY_HERE" || apiKey.startsWith("YOUR_")) {
             return@withContext "Error: Please configure your Gemini API Key in the Secrets panel."
         }
-        
+
         val client = okhttp3.OkHttpClient.Builder()
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .build()
-            
+
         val mediaType = "application/json; charset=utf-8".toMediaType()
-        
+
         val contentObj = JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
         val requestBodyJson = JSONObject()
             .put("contents", JSONArray().put(contentObj))
             .toString()
-            
+
         val request = okhttp3.Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey")
             .post(requestBodyJson.toRequestBody(mediaType))
             .build()
-            
+
         try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext "Error: API call failed (${response.code})"
                 val responseBody = response.body?.string() ?: return@withContext "Error: Empty response"
-                
+
                 val jsonResponse = JSONObject(responseBody)
                 val candidates = jsonResponse.getJSONArray("candidates")
                 val firstCandidate = candidates.getJSONObject(0)
@@ -509,48 +488,22 @@ fun AddEditNoteScreen(
     )
 
     val animatedBackgroundColor by animateColorAsState(
-        targetValue = selectedColor?.let { hex ->
-            try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { MaterialTheme.colorScheme.background }
-        } ?: MaterialTheme.colorScheme.background,
-        animationSpec = tween(durationMillis = 300)
+        targetValue = noteSurface(selectedColor, editor = true),
+        animationSpec = tween(180), label = "EditorColor"
     )
 
-    val saveAndGoBack = {
-        val tagsString = activeTagsList.distinct().joinToString(",")
-        // Save if not empty
-        if (title.isNotBlank() || content.isNotBlank()) {
-            if (noteId != null) {
-                val noteToUpdate = existingNote?.copy(
-                    title = title,
-                    content = content,
-                    isPinned = isPinned,
-                    colorHex = selectedColor,
-                    tags = tagsString,
-                    isLocked = isLocked,
-                    lockPin = lockPin
-                ) ?: NoteEntity(
-                    id = noteId,
-                    title = title,
-                    content = content,
-                    isPinned = isPinned,
-                    colorHex = selectedColor,
-                    tags = tagsString,
-                    isLocked = isLocked,
-                    lockPin = lockPin
-                )
-                viewModel.updateNote(noteToUpdate)
-            } else {
-                viewModel.addNote(
-                    title = title,
-                    content = content,
-                    colorHex = selectedColor,
-                    tags = tagsString,
-                    isLocked = isLocked,
-                    lockPin = lockPin
-                )
+    val saveAndGoBack: () -> Unit = {
+        if (!draft.closing) {
+            draft.closing = true
+            focusManager.clearFocus()
+            coroutineScope.launch {
+                try {
+                    viewModel.saveDraft(draft)
+                    viewModel.closeDraft(draft)
+                    onNavigateBack()
+                } catch (e: Exception) { draft.closing = false }
             }
         }
-        onNavigateBack()
     }
 
     // Capture hardware back behavior gracefully
@@ -561,6 +514,7 @@ fun AddEditNoteScreen(
     Scaffold(
         modifier = Modifier
             .fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbar) },
         containerColor = animatedBackgroundColor,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -571,10 +525,21 @@ fun AddEditNoteScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = if (existingNote != null) "Edit Note" else "New Note",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold)
-                        )
+                        Column {
+                            Text(if (noteId != null) "Edit note" else "New note", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                when {
+                                    !draft.loaded -> "Opening note…"
+                                    draft.error != null -> "Save needs attention"
+                                    draft.saving -> "Saving…"
+                                    draft.dirty -> "Unsaved changes"
+                                    draft.base != null -> "Saved"
+                                    else -> "Markdown supported"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (draft.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -582,35 +547,32 @@ fun AddEditNoteScreen(
                         onClick = { saveAndGoBack() },
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.BACK)
+                        OmniIcon(OmniIconType.BACK, modifier = Modifier.semantics { contentDescription = "Save and go back" })
                     }
                 },
                 actions = {
-                    // Modern Minimalist Mode Switcher (Single Clean Icon Toggle)
-                    IconButton(
-                        onClick = { isPreviewMode = !isPreviewMode },
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+                    TextButton(
+                        onClick = { focusManager.clearFocus(); isPreviewMode = !isPreviewMode },
+                        enabled = draft.loaded && !draft.closing
                     ) {
-                        CanvasCustomIcon(
-                            type = if (isPreviewMode) CanvasIconType.EDIT else CanvasIconType.VISIBILITY,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        OmniIcon(if (isPreviewMode) OmniIconType.EDIT else OmniIconType.VISIBILITY,
+                            tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (isPreviewMode) "Edit" else "Preview")
                     }
 
                     // Open Design & Tags tuning Sheet
                     IconButton(
                         onClick = { showSettingsSheet = true },
+                        enabled = draft.loaded && !draft.closing,
                         modifier = Modifier
                             .padding(end = 4.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary)
+                        OmniIcon(OmniIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.semantics { contentDescription = "Note options" })
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -629,18 +591,26 @@ fun AddEditNoteScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                AnimatedContent(
+                if (!draft.loaded) {
+                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        if (draft.error == null) CircularProgressIndicator()
+                        else {
+                            Text(draft.error!!, modifier = Modifier.padding(24.dp))
+                            TextButton(onClick = { coroutineScope.launch { draft.error = null; viewModel.loadDraft(draft) } }) { Text("Retry") }
+                        }
+                    }
+                } else AnimatedContent(
                     targetState = isPreviewMode,
                     label = "EditorPreviewTransition",
                     transitionSpec = {
                         (slideInHorizontally(
-                            initialOffsetX = { fullWidth -> if (targetState) fullWidth else -fullWidth },
-                            animationSpec = tween(500, easing = FastOutSlowInEasing)
-                        ) + fadeIn(tween(500))).togetherWith(
+                            initialOffsetX = { fullWidth -> if (targetState) fullWidth / 8 else -fullWidth / 8 },
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(220))).togetherWith(
                             slideOutHorizontally(
-                                targetOffsetX = { fullWidth -> if (targetState) -fullWidth else fullWidth },
-                                animationSpec = tween(500, easing = FastOutSlowInEasing)
-                            ) + fadeOut(tween(500))
+                                targetOffsetX = { fullWidth -> if (targetState) -fullWidth / 8 else fullWidth / 8 },
+                                animationSpec = tween(220, easing = FastOutSlowInEasing)
+                            ) + fadeOut(tween(220))
                         )
                     },
                     modifier = Modifier.fillMaxSize()
@@ -648,32 +618,15 @@ fun AddEditNoteScreen(
                     if (!isPreview) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             val view = LocalView.current
-                            val customTextToolbar = remember(view, contentValue) {
-                                com.omninote.ui.components.CustomTextToolbar(view) { prefix, suffix ->
-                                    val selStart = contentValue.selection.min
-                                    val selEnd = contentValue.selection.max
-                                    val text = contentValue.text
-                                    if (selStart != selEnd) {
-                                        val before = text.substring(0, selStart)
-                                        val selected = text.substring(selStart, selEnd)
-                                        val after = text.substring(selEnd)
-                                        val newText = before + prefix + selected + suffix + after
-                                        val newSelStart = selStart + prefix.length
-                                        val newSelEnd = newSelStart + selected.length
-                                        contentValue = contentValue.copy(
-                                            text = newText,
-                                            selection = androidx.compose.ui.text.TextRange(newSelStart, newSelEnd)
-                                        )
-                                        content = newText
-                                    }
-                                }
+                            val customTextToolbar = remember(view, buffer) {
+                                com.omninote.ui.components.CustomTextToolbar(view) { prefix, suffix -> buffer.wrap(prefix, suffix) }
                             }
                             CompositionLocalProvider(LocalTextToolbar provides customTextToolbar) {
                             // 1. Distraction-free Writing Area
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(bottom = 72.dp)
+                                    .padding(bottom = editorDockHeight + 16.dp)
                             ) {
                                 TextField(
                                     value = title,
@@ -681,11 +634,11 @@ fun AddEditNoteScreen(
                                     placeholder = {
                                         Text(
                                             "Title",
-                                            style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Black, textDirection = TextDirection.ContentOrLtr),
+                                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, textDirection = TextDirection.ContentOrLtr),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
                                         )
                                     },
-                                    textStyle = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Black, textDirection = TextDirection.ContentOrLtr),
+                                    textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, textDirection = TextDirection.ContentOrLtr),
                                     colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
                                         unfocusedContainerColor = Color.Transparent,
@@ -696,19 +649,13 @@ fun AddEditNoteScreen(
                                     ),
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
                                 )
-        
+
                                 TextField(
                                     value = contentValue,
-                                    onValueChange = { 
-                                        if (it.text != contentValue.text) {
-                                            redoStack = emptyList()
-                                        }
-                                        contentValue = it
-                                        content = it.text
-                                    },
+                                    onValueChange = { contentValue = it },
                                     placeholder = {
                                         Text(
-                                            "Write your thoughts here... Use markdown shortcuts below to structure your note beautifully.",
+                                            "Start writing…",
                                             style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                                         )
@@ -737,12 +684,13 @@ fun AddEditNoteScreen(
                                     .padding(bottom = 8.dp, start = 12.dp, end = 12.dp)
                             ) {
                                 Surface(
-                                    tonalElevation = 8.dp,
-                                    shadowElevation = 16.dp,
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
+                                    tonalElevation = 0.dp,
+                                    shadowElevation = 4.dp,
+                                    color = MaterialTheme.colorScheme.surface,
                                     shape = RoundedCornerShape(24.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .onSizeChanged { size -> editorDockHeight = with(density) { size.height.toDp() } }
                                         .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
                                 ) {
                                     Column(
@@ -770,8 +718,8 @@ fun AddEditNoteScreen(
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                         ) {
-                                                            CanvasCustomIcon(
-                                                                type = CanvasIconType.LABEL,
+                                                            OmniIcon(
+                                                                type = OmniIconType.LABEL,
                                                                 tint = MaterialTheme.colorScheme.primary,
                                                                 modifier = Modifier.size(12.dp)
                                                             )
@@ -786,200 +734,18 @@ fun AddEditNoteScreen(
                                             }
                                             Spacer(modifier = Modifier.height(4.dp))
                                         }
-         
-                                        // Redesigned structured non-crowded bottom toolbar
+
                                         Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState())
-                                                .padding(horizontal = 8.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            // Group 0: Undo/Redo
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                            ) {
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.UNDO,
-                                                    contentDescription = "Undo",
-                                                    tint = if (undoStack.size > 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                                                    onClick = {
-                                                        if (undoStack.size > 1) {
-                                                            try {
-                                                                redoStack = redoStack + content
-                                                                val nextUndoStack = undoStack.dropLast(1)
-                                                                undoStack = nextUndoStack
-                                                                val nextText = nextUndoStack.last()
-                                                                content = nextText
-                                                                contentValue = contentValue.copy(
-                                                                    text = nextText,
-                                                                    selection = androidx.compose.ui.text.TextRange(nextText.length)
-                                                                )
-                                                            } catch (e: Exception) {
-                                                                val nextUndoStack = undoStack.dropLast(1)
-                                                                undoStack = nextUndoStack
-                                                                val nextText = nextUndoStack.lastOrNull() ?: ""
-                                                                content = nextText
-                                                                contentValue = androidx.compose.ui.text.input.TextFieldValue(
-                                                                    text = nextText,
-                                                                    selection = androidx.compose.ui.text.TextRange(nextText.length)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                )
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.REDO,
-                                                    contentDescription = "Redo",
-                                                    tint = if (redoStack.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                                                    onClick = {
-                                                        if (redoStack.isNotEmpty()) {
-                                                            try {
-                                                                val nextState = redoStack.last()
-                                                                redoStack = redoStack.dropLast(1)
-                                                                undoStack = undoStack + nextState
-                                                                content = nextState
-                                                                contentValue = contentValue.copy(
-                                                                    text = nextState,
-                                                                    selection = androidx.compose.ui.text.TextRange(nextState.length)
-                                                                )
-                                                            } catch (e: Exception) {
-                                                                val nextState = redoStack.lastOrNull() ?: ""
-                                                                redoStack = redoStack.dropLast(1)
-                                                                undoStack = undoStack + nextState
-                                                                content = nextState
-                                                                contentValue = androidx.compose.ui.text.input.TextFieldValue(
-                                                                    text = nextState,
-                                                                    selection = androidx.compose.ui.text.TextRange(nextState.length)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                )
-                                            }
-
-                                            // Elegant subtle separator
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(1.dp)
-                                                    .height(24.dp)
-                                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
-                                            )
-
-                                            // Group 1: Rich Text Formatting
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                            ) {
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.FORMAT_BOLD,
-                                                    contentDescription = "Bold text",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    onClick = { content += "**" }
-                                                )
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.FORMAT_ITALIC,
-                                                    contentDescription = "Italic text",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    onClick = { content += "*" }
-                                                )
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.BULLET_LIST,
-                                                    contentDescription = "Bullet List",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    onClick = { content += "\n- " }
-                                                )
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.CHECKBOX_ON,
-                                                    contentDescription = "Checklist checklist item",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    onClick = { content += "\n- [ ] " }
-                                                )
-                                            }
-
-                                            // Elegant subtle separator
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(1.dp)
-                                                    .height(24.dp)
-                                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
-                                            )
-
-                                            // Group 2: Media & Voice Inputs
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                            ) {
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.MIC,
-                                                    contentDescription = "Record live audio voice clip",
-                                                    tint = MaterialTheme.colorScheme.secondary,
-                                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f),
-                                                    onClick = { checkAndRequestRecordAudio() }
-                                                )
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.WAVEFORM,
-                                                    contentDescription = "AI Speech-to-Text Dictation",
-                                                    tint = MaterialTheme.colorScheme.secondary,
-                                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f),
-                                                    onClick = { checkAndRequestDictation() }
-                                                )
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.IMAGE,
-                                                    contentDescription = "Attach photo image",
-                                                    tint = MaterialTheme.colorScheme.secondary,
-                                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f),
-                                                    onClick = { checkAndRequestImageStorage() }
-                                                )
-                                            }
-
-                                            // Elegant subtle separator
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(1.dp)
-                                                    .height(24.dp)
-                                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
-                                            )
-
-                                            // Group 3: Pro & Tuning Customization
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                            ) {
-                                                // Glowing Premium magic tools trigger
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(44.dp)
-                                                        .clip(CircleShape)
-                                                        .background(
-                                                            brush = Brush.linearGradient(
-                                                                colors = listOf(
-                                                                    MaterialTheme.colorScheme.tertiary,
-                                                                    MaterialTheme.colorScheme.primary
-                                                                )
-                                                            ),
-                                                            alpha = 0.15f
-                                                        )
-                                                        .clickable { showPremiumToolsDialog = true },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    CanvasCustomIcon(
-                                                        type = CanvasIconType.WAND,
-                                                        tint = MaterialTheme.colorScheme.tertiary,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-
-                                                // Design Settings Tuning Panel Trigger
-                                                ToolbarIconButton(
-                                                    iconType = CanvasIconType.TUNE,
-                                                    contentDescription = "Tune Note style and tags",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    onClick = { showSettingsSheet = true }
-                                                )
-                                            }
+                                            ToolbarIconButton(OmniIconType.UNDO, "Undo", enabled = buffer.canUndo, onClick = { buffer.undo() })
+                                            ToolbarIconButton(OmniIconType.REDO, "Redo", enabled = buffer.canRedo, onClick = { buffer.redo() })
+                                            ToolbarIconButton(OmniIconType.FORMAT_BOLD, "Bold text", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.wrap("**") })
+                                            ToolbarIconButton(OmniIconType.BULLET_LIST, "Bullet list", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.prefixLines("- ") })
+                                            ToolbarIconButton(OmniIconType.CHECKBOX_ON, "Checklist", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.prefixLines("- [ ] ") })
+                                            ToolbarIconButton(OmniIconType.PLUS, "More formatting and attachments", tint = MaterialTheme.colorScheme.primary, onClick = { showPremiumToolsDialog = true })
                                         }
                                     }
                                 }
@@ -990,65 +756,13 @@ fun AddEditNoteScreen(
                     Box(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 24.dp, vertical = 20.dp)
-                                .animateContentSize()
-                        ) {
-                            if (title.isNotBlank()) {
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.headlineLarge,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(bottom = 16.dp)
-                                )
-                            }
+                        MarkdownDocumentPreview(
+                            title = title,
+                            rawText = content,
+                            listState = previewScroll,
+                            onCheckedChange = buffer::setChecked
+                        )
 
-                            if (content.isNotBlank()) {
-                                MarkdownContent(
-                                    rawText = content,
-                                    onCheckedChange = { lineIndex, isChecked ->
-                                        val lines = content.split("\n").toMutableList()
-                                        if (lineIndex >= 0 && lineIndex < lines.size) {
-                                            val original = lines[lineIndex]
-                                            lines[lineIndex] = if (isChecked) {
-                                                original.replace("- [ ]", "- [x]").replace("* [ ]", "* [x]")
-                                            } else {
-                                                original.replace("- [x]", "- [ ]").replace("* [x]", "* [ ]")
-                                                    .replace("- [X]", "- [ ]").replace("* [X]", "* [ ]")
-                                            }
-                                            content = lines.joinToString("\n")
-                                        }
-                                    }
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 64.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        CanvasCustomIcon(
-                                            type = CanvasIconType.VISIBILITY_OFF,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                                            modifier = Modifier.size(32.dp)
-                                        )
-                                        Text(
-                                            text = "Write description notes to preview styled markdown content here.",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 } // End of if(!isPreview) else {..}
             } // End of AnimatedContent Content Block
@@ -1057,17 +771,14 @@ fun AddEditNoteScreen(
 
     // Modern Note Customization Slider & Bottom Sheet
         if (showSettingsSheet) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = { showSettingsSheet = false },
                 sheetState = sheetState,
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     // Header Bar
@@ -1087,23 +798,23 @@ fun AddEditNoteScreen(
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                OmniIcon(OmniIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
                             Text(
-                                text = "Customize Note",
+                                text = "Note options",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         IconButton(
                             onClick = { showSettingsSheet = false },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
-                            CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                         }
                     }
 
@@ -1125,8 +836,8 @@ fun AddEditNoteScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                CanvasCustomIcon(
-                                    type = if (isPinned) CanvasIconType.PIN else CanvasIconType.UNPIN,
+                                OmniIcon(
+                                    type = if (isPinned) OmniIconType.PIN else OmniIconType.UNPIN,
                                     tint = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -1145,19 +856,19 @@ fun AddEditNoteScreen(
                                     .weight(1f)
                                     .height(56.dp)
                                     .clickable {
-                                        val tagsString = activeTagsList.distinct().joinToString(",")
-                                        val noteToTrash = existingNote.copy(
-                                            title = title,
-                                            content = content,
-                                            isPinned = isPinned,
-                                            colorHex = selectedColor,
-                                            tags = tagsString,
-                                            isLocked = isLocked,
-                                            lockPin = lockPin,
-                                            isTrashed = true
-                                        )
-                                        viewModel.moveToTrash(noteToTrash)
-                                        onNavigateBack()
+                                        if (!draft.closing) {
+                                            draft.closing = true
+                                            coroutineScope.launch {
+                                                try {
+                                                    viewModel.trashDraft(draft)
+                                                    viewModel.closeDraft(draft)
+                                                    onNavigateBack()
+                                                } catch (e: Exception) {
+                                                    draft.closing = false
+                                                    draft.error = "Couldn't move this note to trash. Try again."
+                                                }
+                                            }
+                                        }
                                     },
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
@@ -1167,7 +878,7 @@ fun AddEditNoteScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    CanvasCustomIcon(CanvasIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
+                                    OmniIcon(OmniIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = "Delete",
@@ -1222,8 +933,8 @@ fun AddEditNoteScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (selectedColor == colorHex) {
-                                            CanvasCustomIcon(
-                                                type = CanvasIconType.TICK,
+                                            OmniIcon(
+                                                type = OmniIconType.TICK,
                                                 tint = if (colorHex == "#E6E3FF" || colorHex == "#FFF0CC" || colorHex == "#FFD6EC" || colorHex == null) MaterialTheme.colorScheme.primary else Color.White,
                                                 modifier = Modifier.size(18.dp)
                                             )
@@ -1233,7 +944,7 @@ fun AddEditNoteScreen(
                             }
                         }
                     }
-                    
+
                     // 2. Advanced Privacy & Lock Card
                     Card(
                         modifier = Modifier
@@ -1294,7 +1005,7 @@ fun AddEditNoteScreen(
                             }
                         }
                     }
-                    
+
                     // 3. Advanced Custom Export Card
                     Card(
                         modifier = Modifier
@@ -1339,7 +1050,7 @@ fun AddEditNoteScreen(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    CanvasCustomIcon(CanvasIconType.ATTACH_FILE, modifier = Modifier.size(16.dp))
+                                    OmniIcon(OmniIconType.ATTACH_FILE, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Export TXT", fontWeight = FontWeight.Bold)
                                 }
@@ -1365,7 +1076,7 @@ fun AddEditNoteScreen(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    CanvasCustomIcon(CanvasIconType.CODE, modifier = Modifier.size(16.dp))
+                                    OmniIcon(OmniIconType.CODE, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Export MD", fontWeight = FontWeight.Bold)
                                 }
@@ -1399,12 +1110,12 @@ fun AddEditNoteScreen(
                                 IconButton(
                                     onClick = { showAddTagDialog = true },
                                     modifier = Modifier
-                                        .size(28.dp)
+                                        .size(48.dp)
                                         .clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
                                 ) {
-                                    CanvasCustomIcon(
-                                        type = CanvasIconType.ADD,
+                                    OmniIcon(
+                                        type = OmniIconType.ADD,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1434,9 +1145,9 @@ fun AddEditNoteScreen(
                                         },
                                         label = { Text(tag, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
                                         leadingIcon = if (isSelected) {
-                                            { CanvasCustomIcon(CanvasIconType.TICK, modifier = Modifier.size(12.dp)) }
+                                            { OmniIcon(OmniIconType.TICK, modifier = Modifier.size(12.dp)) }
                                         } else {
-                                            { CanvasCustomIcon(CanvasIconType.LABEL, modifier = Modifier.size(12.dp)) }
+                                            { OmniIcon(OmniIconType.LABEL, modifier = Modifier.size(12.dp)) }
                                         },
                                         shape = RoundedCornerShape(16.dp)
                                     )
@@ -1497,13 +1208,11 @@ fun AddEditNoteScreen(
 
         // Custom Tag Creation dialog
         if (showAddTagDialog) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = {
                     showAddTagDialog = false
                     newTagText = ""
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -1520,12 +1229,12 @@ fun AddEditNoteScreen(
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        CanvasCustomIcon(CanvasIconType.LABEL, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        OmniIcon(OmniIconType.LABEL, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                     }
                     Text(
                         text = "Create Custom Tag",
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
@@ -1560,10 +1269,8 @@ fun AddEditNoteScreen(
                         }
                         Button(
                             onClick = {
-                                val trimmed = newTagText.trim()
-                                if (trimmed.isNotEmpty() && !activeTagsList.contains(trimmed)) {
-                                    activeTagsList = activeTagsList + trimmed
-                                }
+                                val entered = newTagText.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                                activeTagsList = (activeTagsList + entered).distinct()
                                 showAddTagDialog = false
                                 newTagText = ""
                             },
@@ -1579,13 +1286,11 @@ fun AddEditNoteScreen(
 
         // Visual text formatting color picker wizard dialog
         if (showColorHighlightWizard) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = {
                     showColorHighlightWizard = false
                     wizardTextToFormat = ""
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -1599,10 +1304,10 @@ fun AddEditNoteScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        OmniIcon(OmniIconType.PALETTE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Text("Color Highlight Studio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
-                    
+
                     OutlinedTextField(
                         value = wizardTextToFormat,
                         onValueChange = { wizardTextToFormat = it },
@@ -1616,7 +1321,7 @@ fun AddEditNoteScreen(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    
+
                     Text("TEXT COLOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     val textColors = listOf("#2D26A0" to "Indigo Dark", "#9A5500" to "Orange Dark", "#8B2060" to "Rose Dark", "#1B5E20" to "Green Dark", "#1A237E" to "Blue Dark", "#B71C1C" to "Red Dark", "#4A148C" to "Violet Dark")
                     Row(
@@ -1632,16 +1337,16 @@ fun AddEditNoteScreen(
                                     .clip(CircleShape)
                                     .background(rgb)
                                     .border(
-                                        width = if (wizardTextColorSelected == hexCode) 2.5.dp else 1.dp, 
-                                        color = if (wizardTextColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f), 
+                                        width = if (wizardTextColorSelected == hexCode) 2.5.dp else 1.dp,
+                                        color = if (wizardTextColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
                                         shape = CircleShape
                                     )
                                     .clickable { wizardTextColorSelected = if (wizardTextColorSelected == hexCode) null else hexCode },
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (wizardTextColorSelected == hexCode) {
-                                    CanvasCustomIcon(
-                                        type = CanvasIconType.TICK,
+                                    OmniIcon(
+                                        type = OmniIconType.TICK,
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1649,7 +1354,7 @@ fun AddEditNoteScreen(
                             }
                         }
                     }
-                    
+
                     Text("BACKGROUND ACCENT COLOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     val bgColors = listOf("#E6E3FF" to "Indigo", "#FFF0CC" to "Orange", "#FFD6EC" to "Rose", "#E8F5E9" to "Green", "#E8EAF6" to "Blue", "#FFEBEE" to "Red", "#F3E5F5" to "Violet")
                     Row(
@@ -1665,16 +1370,16 @@ fun AddEditNoteScreen(
                                     .clip(CircleShape)
                                     .background(rgb)
                                     .border(
-                                        width = if (wizardBgColorSelected == hexCode) 2.5.dp else 1.dp, 
-                                        color = if (wizardBgColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f), 
+                                        width = if (wizardBgColorSelected == hexCode) 2.5.dp else 1.dp,
+                                        color = if (wizardBgColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
                                         shape = CircleShape
                                     )
                                     .clickable { wizardBgColorSelected = if (wizardBgColorSelected == hexCode) null else hexCode },
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (wizardBgColorSelected == hexCode) {
-                                    CanvasCustomIcon(
-                                        type = CanvasIconType.TICK,
+                                    OmniIcon(
+                                        type = OmniIconType.TICK,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1682,17 +1387,17 @@ fun AddEditNoteScreen(
                             }
                         }
                     }
-                    
+
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp), 
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedButton(
                             onClick = { showColorHighlightWizard = false; wizardTextToFormat = "" },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
-                        ) { 
-                            Text("Cancel") 
+                        ) {
+                            Text("Cancel")
                         }
                         Button(
                             onClick = {
@@ -1700,13 +1405,13 @@ fun AddEditNoteScreen(
                                 var markdownToken = insertTxt
                                 if (wizardTextColorSelected != null) { markdownToken = "[color:${wizardTextColorSelected}]($markdownToken)" }
                                 if (wizardBgColorSelected != null) { markdownToken = "[bg:${wizardBgColorSelected}]($markdownToken)" }
-                                content += (if (content.isNotEmpty() && !content.endsWith(" ")) " " else "") + markdownToken + " "
+                                buffer.insert(markdownToken)
                                 showColorHighlightWizard = false; wizardTextToFormat = ""
                             },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1.2f)
-                        ) { 
-                            Text("Apply Format", fontWeight = FontWeight.Bold) 
+                        ) {
+                            Text("Apply Format", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1718,7 +1423,7 @@ fun AddEditNoteScreen(
             // Amplitude variables used to animate dynamic waveform bars on Canvas!
             val amplitudes = remember { mutableStateListOf(15f, 10f, 25f, 12f, 40f, 18f, 30f, 8f, 20f, 14f) }
 
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = {
                     if (isRecordingAudio) {
                         try { mediaRecorder?.stop() } catch (e: Exception) {}
@@ -1728,8 +1433,6 @@ fun AddEditNoteScreen(
                     }
                     showVoiceRecorderDialog = false
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -1756,8 +1459,8 @@ fun AddEditNoteScreen(
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.MIC,
+                                OmniIcon(
+                                    type = OmniIconType.MIC,
                                     tint = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -1765,7 +1468,7 @@ fun AddEditNoteScreen(
                             Text(
                                 text = "Voice Note Studio",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -1781,11 +1484,11 @@ fun AddEditNoteScreen(
                                 recordTimeSeconds = 0
                             },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
-                            CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                         }
                     }
 
@@ -1847,7 +1550,7 @@ fun AddEditNoteScreen(
                     }
                     Text(
                         text = formattedTime,
-                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Black),
+                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
                         color = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                         letterSpacing = 1.sp
                     )
@@ -1871,7 +1574,7 @@ fun AddEditNoteScreen(
                                     mediaRecorder = null
                                     isRecordingAudio = false
                                     tempAudioFile?.let {
-                                        content += "\n[voice:Voice Recording ${System.currentTimeMillis() % 1000}](${android.net.Uri.fromFile(it)})\n"
+                                        buffer.insert("\n\n[voice:Voice Recording ${System.currentTimeMillis() % 1000}](${android.net.Uri.fromFile(it)})\n\n")
                                     }
                                     showVoiceRecorderDialog = false
                                     recordTimeSeconds = 0
@@ -1912,8 +1615,8 @@ fun AddEditNoteScreen(
                             )
                             .border(width = 2.dp, color = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, shape = CircleShape)
                     ) {
-                        CanvasCustomIcon(
-                            type = if (isRecordingAudio) CanvasIconType.STOP else CanvasIconType.RECORD,
+                        OmniIcon(
+                            type = if (isRecordingAudio) OmniIconType.STOP else OmniIconType.RECORD,
                             tint = if (isRecordingAudio) MaterialTheme.colorScheme.onErrorContainer else Color.Red,
                             modifier = Modifier.size(44.dp)
                         )
@@ -1941,7 +1644,7 @@ fun AddEditNoteScreen(
 
         // AI Speech Dictation dialog
         if (showSpeechDictationDialog) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = {
                     if (isListeningSpeech) {
                         try { speechRecognizer.stopListening() } catch (e: Exception) {}
@@ -1949,8 +1652,6 @@ fun AddEditNoteScreen(
                     }
                     showSpeechDictationDialog = false
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -1977,8 +1678,8 @@ fun AddEditNoteScreen(
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.MIC,
+                                OmniIcon(
+                                    type = OmniIconType.MIC,
                                     tint = if (isListeningSpeech) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -1986,7 +1687,7 @@ fun AddEditNoteScreen(
                             Text(
                                 "AI Voice Dictation",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -1999,11 +1700,11 @@ fun AddEditNoteScreen(
                                 showSpeechDictationDialog = false
                             },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
-                            CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                         }
                     }
 
@@ -2030,7 +1731,7 @@ fun AddEditNoteScreen(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             } else {
-                                CanvasCustomIcon(CanvasIconType.INFO, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                OmniIcon(OmniIconType.INFO, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                             }
                             Text(
                                 text = dictationStatusMessage,
@@ -2088,8 +1789,8 @@ fun AddEditNoteScreen(
                                 containerColor = if (isListeningSpeech) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                             )
                         ) {
-                            CanvasCustomIcon(
-                                type = if (isListeningSpeech) CanvasIconType.STOP else CanvasIconType.MIC,
+                            OmniIcon(
+                                type = if (isListeningSpeech) OmniIconType.STOP else OmniIconType.MIC,
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -2142,8 +1843,8 @@ fun AddEditNoteScreen(
                                     strokeWidth = 2.dp
                                 )
                             } else {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.WAND,
+                                OmniIcon(
+                                    type = OmniIconType.WAND,
                                     tint = MaterialTheme.colorScheme.onTertiary,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -2176,7 +1877,7 @@ fun AddEditNoteScreen(
                         Button(
                             onClick = {
                                 if (dictatedText.isNotBlank()) {
-                                    content += (if (content.isNotEmpty() && !content.endsWith(" ")) " " else "") + dictatedText
+                                    buffer.insert(dictatedText)
                                 }
                                 showSpeechDictationDialog = false
                             },
@@ -2193,10 +1894,8 @@ fun AddEditNoteScreen(
 
         // Interactive Table generator dialog
         if (showTableGeneratorDialog) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = { showTableGeneratorDialog = false },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -2222,28 +1921,28 @@ fun AddEditNoteScreen(
                                     .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(CanvasIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                                OmniIcon(OmniIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
                             }
                             Text(
                                 "Table Generator",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         IconButton(
                             onClick = { showTableGeneratorDialog = false },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
-                            CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                         }
                     }
 
                     Text("Specify table rows and columns to generate clean Markdown table tags.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    
+
                     OutlinedTextField(
                         value = tableColumnsCount,
                         onValueChange = { tableColumnsCount = it },
@@ -2270,7 +1969,7 @@ fun AddEditNoteScreen(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -2284,10 +1983,10 @@ fun AddEditNoteScreen(
                         }
                         Button(
                             onClick = {
-                                val cols = tableColumnsCount.toIntOrNull() ?: 2
-                                val rows = tableRowsCount.toIntOrNull() ?: 3
+                                val cols = (tableColumnsCount.toIntOrNull() ?: 2).coerceIn(1, 12)
+                                val rows = (tableRowsCount.toIntOrNull() ?: 3).coerceIn(1, 100)
                                 val sb = java.lang.StringBuilder()
-                                sb.append("\n|")
+                                sb.append("\n\n|")
                                 for (c in 1..cols) { sb.append(" Header $c |") }
                                 sb.append("\n|")
                                 for (c in 1..cols) { sb.append("---|") }
@@ -2298,7 +1997,7 @@ fun AddEditNoteScreen(
                                     sb.append("\n")
                                 }
                                 sb.append("\n")
-                                content += sb.toString()
+                                buffer.insert(sb.toString())
                                 showTableGeneratorDialog = false
                             },
                             shape = RoundedCornerShape(12.dp),
@@ -2313,10 +2012,8 @@ fun AddEditNoteScreen(
 
         // Custom Premium styling Studio overlay dialog
         if (showPremiumToolsDialog) {
-            ModalBottomSheet(
+            OmniSheet(
                 onDismissRequest = { showPremiumToolsDialog = false },
-                containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle() }
             ) {
                 Column(
                     modifier = Modifier
@@ -2329,15 +2026,15 @@ fun AddEditNoteScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CanvasCustomIcon(
-                            type = CanvasIconType.WAND,
+                        OmniIcon(
+                            type = OmniIconType.WAND,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Pro Formatting Studio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("Advanced content creator suite", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+                            Text("Writing tools", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Format text and add content", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
                         }
                     }
                     Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
@@ -2345,38 +2042,35 @@ fun AddEditNoteScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
+
                     ) {
-                        Text("TXT HEADINGS & STYLES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 4.dp),
+                        Text("Formatting", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            PremiumToolChip(label = "H1 Title", iconType = CanvasIconType.HEADING_1) { content += "\n# "; showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "H2 Subtitle", iconType = CanvasIconType.HEADING_2) { content += "\n## "; showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Italics", iconType = CanvasIconType.FORMAT_ITALIC) { content += "*"; showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Marker", iconType = CanvasIconType.HIGHLIGHT) { content += "=="; showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Quote block", iconType = CanvasIconType.QUOTE) { content += "\n> "; showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Code Block", iconType = CanvasIconType.CODE) { content += "\n```kotlin\n\n```"; showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Bullet List", iconType = CanvasIconType.BULLET_LIST) { content += "\n- "; showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Heading 1", iconType = OmniIconType.HEADING_1) { buffer.prefixLines("# "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Heading 2", iconType = OmniIconType.HEADING_2) { buffer.prefixLines("## "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Italics", iconType = OmniIconType.FORMAT_ITALIC) { buffer.wrap("*"); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Marker", iconType = OmniIconType.HIGHLIGHT) { buffer.wrap("=="); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Quote block", iconType = OmniIconType.QUOTE) { buffer.prefixLines("> "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Code Block", iconType = OmniIconType.CODE) { buffer.wrap("\n```\n", "\n```\n"); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Bullet List", iconType = OmniIconType.BULLET_LIST) { buffer.prefixLines("- "); showPremiumToolsDialog = false }
                         }
-                        
+
                         Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
-                        
-                        Text("ADVANCED BUILDERS & STORAGE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
-                        
+
+                        Text("Insert & create", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+
                         Column(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            PremiumInteractiveCard(title = "AI Voice Dictation", description = "Transcribe and clean up voice notes with Gemini AI", iconType = CanvasIconType.MIC, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; checkAndRequestDictation() }
-                            PremiumInteractiveCard(title = "Text Color Vibe Customizer", description = "Format with tailored backgrounds & text highlights", iconType = CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; showColorHighlightWizard = true }
-                            PremiumInteractiveCard(title = "Dynamic Table Builder", description = "Insert customized grid spreadsheets dynamically", iconType = CanvasIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
-                            PremiumInteractiveCard(title = "Upload Document Files", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = CanvasIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
+                            PremiumInteractiveCard(title = "AI Voice Dictation", description = "Transcribe and clean up voice notes with Gemini AI", iconType = OmniIconType.MIC, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; checkAndRequestDictation() }
+                            PremiumInteractiveCard(title = "Text color & highlight", description = "Format with tailored backgrounds & text highlights", iconType = OmniIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { wizardTextToFormat = contentValue.text.substring(contentValue.selection.min, contentValue.selection.max); showPremiumToolsDialog = false; showColorHighlightWizard = true }
+                            PremiumInteractiveCard(title = "Insert table", description = "Insert customized grid spreadsheets dynamically", iconType = OmniIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
+                            PremiumInteractiveCard(title = "Attach file", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = OmniIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
@@ -2388,10 +2082,11 @@ fun AddEditNoteScreen(
 
 @Composable
 fun ToolbarIconButton(
-    iconType: CanvasIconType,
+    iconType: OmniIconType,
     contentDescription: String,
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     containerColor: Color = Color.Transparent,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Box(
@@ -2399,13 +2094,14 @@ fun ToolbarIconButton(
             .size(48.dp)
             .clip(CircleShape)
             .background(containerColor)
-            .clickable(onClick = onClick),
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        CanvasCustomIcon(
+        OmniIcon(
             type = iconType,
-            tint = tint,
-            modifier = Modifier.size(22.dp)
+            tint = if (enabled) tint else tint.copy(alpha = 0.3f),
+            modifier = Modifier.size(24.dp)
         )
     }
 }
@@ -2438,7 +2134,7 @@ fun AnalyticsRow(
 @Composable
 fun PremiumToolChip(
     label: String,
-    iconType: CanvasIconType,
+    iconType: OmniIconType,
     onClick: () -> Unit
 ) {
     InputChip(
@@ -2451,7 +2147,7 @@ fun PremiumToolChip(
             )
         },
         leadingIcon = {
-            CanvasCustomIcon(
+            OmniIcon(
                 type = iconType,
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.primary
@@ -2475,7 +2171,7 @@ fun PremiumToolChip(
 fun PremiumInteractiveCard(
     title: String,
     description: String,
-    iconType: CanvasIconType,
+    iconType: OmniIconType,
     tint: Color,
     onClick: () -> Unit
 ) {
@@ -2502,13 +2198,13 @@ fun PremiumInteractiveCard(
                     .background(tint.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                CanvasCustomIcon(
+                OmniIcon(
                     type = iconType,
                     tint = tint,
                     modifier = Modifier.size(22.dp)
                 )
             }
-            
+
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -2525,9 +2221,9 @@ fun PremiumInteractiveCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )
             }
-            
-            CanvasCustomIcon(
-                type = CanvasIconType.ARROW_RIGHT,
+
+            OmniIcon(
+                type = OmniIconType.ARROW_RIGHT,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier.size(20.dp)
             )
@@ -2535,32 +2231,41 @@ fun PremiumInteractiveCard(
     }
 }
 
-suspend fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri, defaultName: String): android.net.Uri {
-    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        var fileName = defaultName
+private suspend fun importAttachment(context: android.content.Context, uri: android.net.Uri, fallback: String): String =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val name = attachmentName(context, uri, fallback)
+        val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+        val internal = copyUriToInternalStorage(context, uri, name)
+        com.omninote.ui.components.attachmentMarkdown(internal.toString(), name, mime)
+    }
+
+private fun attachmentName(context: android.content.Context, uri: android.net.Uri, fallback: String): String =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0)?.takeIf { it.isNotBlank() } else null
+        }
+    }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: fallback
+
+suspend fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri, defaultName: String): android.net.Uri =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val name = attachmentName(context, uri, defaultName)
+            .replace(Regex("[\\\\/\\p{Cntrl}]"), "_").take(120).ifBlank { "Attachment" }
+        val file = java.io.File(context.filesDir, "${java.util.UUID.randomUUID()}_$name")
         try {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIdx != -1 && cursor.moveToFirst()) {
-                    val name = cursor.getString(nameIdx)
-                    if (!name.isNullOrBlank()) fileName = name
+            val input = context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Attachment unavailable")
+            input.use { source -> file.outputStream().use { output ->
+                val bytes = ByteArray(64 * 1024)
+                while (true) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    val count = source.read(bytes)
+                    if (count < 0) break
+                    output.write(bytes, 0, count)
                 }
-            }
-        } catch (e: Exception) {}
-        
-        val time = System.currentTimeMillis()
-        val finalFileName = "${time}_${fileName.replace(" ", "_").replace("/", "_")}"
-        
-        val destFile = java.io.File(context.filesDir, finalFileName)
-        try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                java.io.FileOutputStream(destFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            android.net.Uri.fromFile(destFile)
-        } catch (e: Exception) {
-            uri 
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            } }
+            android.net.Uri.fromFile(file)
+        } catch (error: Exception) {
+            file.delete()
+            throw error
         }
     }
-}

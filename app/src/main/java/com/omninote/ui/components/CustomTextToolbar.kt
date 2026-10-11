@@ -8,67 +8,55 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 
-class CustomTextToolbar(
-    private val view: View,
-    private val onFormatRequested: ((String, String) -> Unit)? = null
-) : TextToolbar {
-
+/** Anchors the native floating menu to the selection instead of the entire screen. */
+class CustomTextToolbar(private val view: View, private val onFormatRequested: ((String, String) -> Unit)? = null) : TextToolbar {
     private var actionMode: ActionMode? = null
-    override val status: TextToolbarStatus
-        get() = if (actionMode != null) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
+    internal var selectionRect = Rect.Zero
+    private var copy: (() -> Unit)? = null
+    private var paste: (() -> Unit)? = null
+    private var cut: (() -> Unit)? = null
+    private var selectAll: (() -> Unit)? = null
+    override val status get() = if (actionMode != null) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
+    override fun hide() { actionMode?.finish(); actionMode = null }
 
-    override fun hide() {
-        actionMode?.finish()
-        actionMode = null
+    override fun showMenu(rect: Rect, onCopyRequested: (() -> Unit)?, onPasteRequested: (() -> Unit)?,
+        onCutRequested: (() -> Unit)?, onSelectAllRequested: (() -> Unit)?) {
+        selectionRect = rect
+        copy = onCopyRequested; paste = onPasteRequested; cut = onCutRequested; selectAll = onSelectAllRequested
+        if (actionMode != null) {
+            actionMode?.invalidate()
+            actionMode?.invalidateContentRect()
+            return
+        }
+        actionMode = view.startActionMode(callback, ActionMode.TYPE_FLOATING)
     }
-
-    override fun showMenu(
-        rect: Rect,
-        onCopyRequested: (() -> Unit)?,
-        onPasteRequested: (() -> Unit)?,
-        onCutRequested: (() -> Unit)?,
-        onSelectAllRequested: (() -> Unit)?
-    ) {
-        actionMode?.finish()
-        
-        actionMode = view.startActionMode(
-            object : ActionMode.Callback2() {
-                override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                    // System actions
-                    onCopyRequested?.let { copyAction ->
-                        menu.add(0, 1, 0, "Copy").setOnMenuItemClickListener { copyAction(); true }
-                    }
-                    onPasteRequested?.let { pasteAction ->
-                        menu.add(0, 2, 1, "Paste").setOnMenuItemClickListener { pasteAction(); true }
-                    }
-                    onCutRequested?.let { cutAction ->
-                        menu.add(0, 3, 2, "Cut").setOnMenuItemClickListener { cutAction(); true }
-                    }
-                    onSelectAllRequested?.let { selectAllAction ->
-                        menu.add(0, 4, 3, "Select All").setOnMenuItemClickListener { selectAllAction(); true }
-                    }
-                    
-                    // Our custom actions
-                    if (onFormatRequested != null) {
-                        menu.add(0, 10, 4, "Bold").setOnMenuItemClickListener { onFormatRequested.invoke("**", "**"); mode.finish(); true }
-                        menu.add(0, 11, 5, "Italic").setOnMenuItemClickListener { onFormatRequested.invoke("*", "*"); mode.finish(); true }
-                        menu.add(0, 12, 6, "Code").setOnMenuItemClickListener { onFormatRequested.invoke("`", "`"); mode.finish(); true }
-                        menu.add(0, 13, 7, "Quote").setOnMenuItemClickListener { onFormatRequested.invoke("\n> ", ""); mode.finish(); true }
-                        menu.add(0, 14, 8, "Highlight").setOnMenuItemClickListener { onFormatRequested.invoke("==", "=="); mode.finish(); true }
-                        menu.add(0, 15, 9, "Checkbox").setOnMenuItemClickListener { onFormatRequested.invoke("\n- [ ] ", ""); mode.finish(); true }
-                    }
-                    return true
+    internal val callback = object : ActionMode.Callback2() {
+        private fun populate(mode: ActionMode, menu: Menu) {
+            menu.clear()
+            fun action(id: Int, title: String, primary: Boolean, finish: Boolean = true, block: (() -> Unit)?) {
+                if (block == null) return
+                menu.add(0, id, id, title).apply {
+                    setShowAsAction(if (primary) MenuItem.SHOW_AS_ACTION_IF_ROOM else MenuItem.SHOW_AS_ACTION_NEVER)
+                    setOnMenuItemClickListener { block(); if (finish) mode.finish(); true }
                 }
-
-                override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
-
-                override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean = false
-
-                override fun onDestroyActionMode(mode: ActionMode) {
-                    actionMode = null
-                }
-            },
-            ActionMode.TYPE_FLOATING
-        )
+            }
+            action(1, view.context.getString(android.R.string.copy), true, block = copy)
+            action(2, view.context.getString(android.R.string.paste), true, block = paste)
+            action(3, view.context.getString(android.R.string.cut), true, block = cut)
+            action(4, view.context.getString(android.R.string.selectAll), true, false, selectAll)
+            onFormatRequested?.let { format ->
+                action(10, "Bold", false) { format("**", "**") }
+                action(11, "Italic", false) { format("*", "*") }
+                action(12, "Code", false) { format("`", "`") }
+                action(13, "Highlight", false) { format("==", "==") }
+            }
+        }
+        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean { populate(mode, menu); return menu.size() > 0 }
+        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean { populate(mode, menu); return true }
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem) = false
+        override fun onDestroyActionMode(mode: ActionMode) { actionMode = null }
+        override fun onGetContentRect(mode: ActionMode, view: View?, outRect: android.graphics.Rect) {
+            outRect.set(selectionRect.left.toInt(), selectionRect.top.toInt(), selectionRect.right.toInt(), selectionRect.bottom.toInt())
+        }
     }
 }

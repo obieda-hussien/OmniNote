@@ -25,7 +25,7 @@ interface NoteDao {
     suspend fun getNoteById(id: Int): NoteEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertNote(note: NoteEntity)
+    suspend fun insertNote(note: NoteEntity): Long
 
     @Delete
     suspend fun deleteNote(note: NoteEntity)
@@ -36,3 +36,4 @@ interface NoteDao {
     @Query("UPDATE notes SET isPinned = :isPinned WHERE id = :id")
     suspend fun updatePinnedStatus(id: Int, isPinned: Boolean)
 }
+
