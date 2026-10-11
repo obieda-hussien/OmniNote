@@ -1,0 +1,64 @@
+name: Publish privacy policy
+
+on:
+  push:
+    branches: [main]
+    paths: [privacy_policy.html, .github/workflows/privacy-pages.yml]
+  pull_request:
+    branches: [main]
+    paths: [privacy_policy.html, .github/workflows/privacy-pages.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: privacy-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: privacy_policy.html
+          sparse-checkout-cone-mode: false
+      - name: Package only the public privacy policy
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          source = Path('privacy_policy.html')
+          assert source.is_file() and not source.is_symlink()
+          policy = source.read_text(encoding='utf-8')
+          assert '<html' in policy and 'com.omni.noteplus' in policy
+          target = Path('_privacy_site')
+          if target.exists():
+              shutil.rmtree(target)
+          target.mkdir()
+          for name in ('index.html', 'privacy_policy.html'):
+              (target / name).write_text(policy, encoding='utf-8')
+          assert sorted(p.name for p in target.iterdir()) == ['index.html', 'privacy_policy.html']
+          PY
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _privacy_site
+          retention-days: 1
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

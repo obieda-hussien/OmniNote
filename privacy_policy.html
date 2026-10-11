@@ -8,7 +8,7 @@
         :root {
             --bg-color: #f8f9fa;
             --text-color: #212529;
-            --accent-color: #0d6efd;
+            --accent-color: #7264c9;
             --card-bg: #ffffff;
         }
 
@@ -73,12 +73,16 @@
             color: #6c757d;
         }
 
+        @media (max-width: 600px) { .container { margin: 16px; padding: 24px; } h1 { font-size: 2rem; } }
+        @media (prefers-reduced-motion: reduce) { .container { animation: none; opacity: 1; transform: none; } }
+        a { color: var(--accent-color); overflow-wrap: anywhere; }
+
         /* Dark mode support */
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg-color: #121212;
                 --text-color: #e0e0e0;
-                --accent-color: #90caf9;
+                --accent-color: #b7aaf3;
                 --card-bg: #1e1e1e;
             }
             h2 {
@@ -95,6 +99,7 @@
 
     <div class="container">
         <h1>Privacy Policy</h1>
+        <p><strong>App:</strong> Omni Note+ · <code>com.omni.noteplus</code><br><strong>Developer:</strong> Abdelrahman Hussien (Omni)</p>
         <p><strong>Last Updated:</strong> October 11, 2026</p>
 
         <p>Welcome to <strong>Omni Note+</strong>. Your privacy is critically important to us. This Privacy Policy explains our commitment to protecting your data when you use our mobile application.</p>
@@ -104,7 +109,7 @@
         <p>Omni Note+ is an offline-first application. Notes, imported attachments, and application settings are stored in private app storage. Android backup and device transfer depend on your system settings.</p>
 
         <h2>2. Third-Party Services</h2>
-        <p>Our application does not integrate with third-party analytics or advertising services that would track your behavior or collect your personal identifiable information.</p>
+        <p>The app does not include advertising or analytics SDKs. It does not require an account to use local note features. We do not operate a server that stores your notes and we do not sell your personal data.</p>
 
         <p>When a build is configured for Gemini refinement and you use it, the requested text is sent to Google's API. Speech recognition uses your chosen Android recognition service and may require a network connection. Remote media links can contact their destination providers.</p>
 
@@ -114,11 +119,16 @@
         <h2>4. Data Security</h2>
         <p>Note PINs restrict access through the app interface; they are not app-level encryption. The current database stores note content and note PINs locally without encryption. Device locks, system protections and backup settings affect the security of this data.</p>
 
-        <h2>5. Changes to This Policy</h2>
-        <p>We may update our Privacy Policy from time to time. Since we have no way to contact you directly, any updates will be reflected in this document and effective immediately upon updating the app or this page.</p>
+        <h2>5. Data Retention and Deletion</h2>
+        <p>Local notes and settings remain on your device until you delete them or clear the app's storage. Moving a note to Trash does not permanently delete it; use the permanent-delete or empty-trash action to remove it from the note database. Imported attachment copies may remain in private app storage until that storage is cleared or the app is uninstalled.</p>
+        <p>The writing-history feature retains dates, counts and opaque record identities rather than deleted note text, titles, attachments or PINs. Clearing the app's storage removes its local history and settings. Files you exported or shared, and copies in Android backups, must be managed separately through their destination apps or your device/account backup settings.</p>
+        <p>Data sent to an optional external service is handled under that provider's policies. Google's privacy policy is available at <a href="https://policies.google.com/privacy">policies.google.com/privacy</a>. This app does not offer account creation, so there is no app account to delete.</p>
 
-        <h2>6. Contact Us</h2>
-        <p>If you have any questions or suggestions about our Privacy Policy, do not hesitate to contact us at the developer email provided on our Google Play Store listing.</p>
+        <h2>6. Changes to This Policy</h2>
+        <p>We may update this policy when app features or data practices change. The current policy and its last-updated date will remain available on this page.</p>
+
+        <h2>7. Contact Us</h2>
+        <p>For questions about Omni Note+ or this privacy policy, contact developer Abdelrahman Hussien at <a href="mailto:bodybody15151@gmail.com">bodybody15151@gmail.com</a>.</p>
 
         <div class="footer">
             &copy; 2026 Omni Note+. All rights reserved.
