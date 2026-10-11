@@ -31,6 +31,20 @@ class MarkdownRegressionTest {
         var child = node.firstChild
         while (child != null) { addAll(descendants(child)); child = child.next }
     }
+    @Test fun cardMetadataKeepsWordCountsAndBadgesWithoutAFullPreview() {
+        for ((source, expected) in listOf("" to 0, " \t\r\n" to 0,
+            "one\ttwo\nthree" to 3, "واحد اثنين" to 2,
+            "a\u2003b" to 1, "\u2003\u00a0" to 0)) {
+            assertEquals(expected, NoteMarkdownParser.cardMetadata(source).words)
+        }
+        val source = "- [ ] Task\n| Column |\n|---|\n```kotlin\ncode\n```"
+        val metadata = NoteMarkdownParser.cardMetadata(source)
+        assertTrue(metadata.hasChecklist && metadata.hasTable && metadata.hasCode)
+        assertTrue(metadata.text.isEmpty() && metadata.media.isEmpty())
+        val preview = NoteMarkdownParser.cardPreview(source)
+        assertEquals(metadata.words, preview.words)
+        assertTrue(preview.hasChecklist && preview.hasTable && preview.hasCode)
+    }
     @Test fun adjacentImagesAndVoiceInAParagraphRemainMediaWithSurroundingText() {
         val source = "Before ![First](file:///one.jpg)\n![Second](content://images/2)\n[voice:Recording](file:///clip.m4a) after"
         val paragraph = NoteMarkdownParser.parse(source).firstChild

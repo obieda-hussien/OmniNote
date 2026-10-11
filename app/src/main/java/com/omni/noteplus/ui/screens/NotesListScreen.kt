@@ -348,13 +348,15 @@ fun NotesListScreen(
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
 
     // Retrieve unique tags from all stored notes
-    val allTags = remember(activeNotes, archivedNotes, trashedNotes) {
-        val all = activeNotes + archivedNotes + trashedNotes
-        all.flatMap { note ->
-            note.tags.split(",")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-        }.distinct()
+    val allTags by produceState(emptyList<String>(), activeNotes, archivedNotes, trashedNotes) {
+        value = withContext(Dispatchers.Default) {
+            buildSet {
+                for (section in listOf(activeNotes, archivedNotes, trashedNotes)) {
+                    for (note in section) note.tags.splitToSequence(',')
+                        .map(String::trim).filter(String::isNotEmpty).forEach { add(it) }
+                }
+            }.toList()
+        }
     }
 
     // Helper functions for Manual Shuffling (Swapping note timestamps)
@@ -379,9 +381,17 @@ fun NotesListScreen(
     }
 
     // Filter AND Sort notes dynamically
-    val filteredAndSortedNotes = remember(notes, selectedTag, searchQuery, sortBy, filterPinnedOnly) {
-        libraryNotes(notes, selectedTag, searchQuery, sortBy, filterPinnedOnly)
+    val filteredSections by produceState(
+        listOf<List<NoteEntity>>(emptyList(), emptyList(), emptyList()),
+        activeNotes, archivedNotes, trashedNotes, selectedTag, searchQuery, sortBy, filterPinnedOnly
+    ) {
+        value = withContext(Dispatchers.Default) {
+            listOf(activeNotes, archivedNotes, trashedNotes).map { section ->
+                libraryNotes(section, selectedTag, searchQuery, sortBy, filterPinnedOnly)
+            }
+        }
     }
+    val filteredAndSortedNotes = filteredSections[pagerState.currentPage]
 
     // Statistical variables for dashboard metrics
     val totalNotesCount = notes.size
@@ -720,9 +730,7 @@ fun NotesListScreen(
                     }
 
                 // Filter AND Sort notes dynamically per page
-                val pageFilteredAndSortedNotes = remember(pageNotes, selectedTag, searchQuery, sortBy, filterPinnedOnly) {
-                    libraryNotes(pageNotes, selectedTag, searchQuery, sortBy, filterPinnedOnly)
-                }
+                val pageFilteredAndSortedNotes = filteredSections[page]
 
                 if (pageFilteredAndSortedNotes.isEmpty()) {
                     Box(
@@ -1732,21 +1740,21 @@ fun NoteCard(
         animationSpec = tween(180), label = "NoteCardColor"
     )
 
-    // Calculate reading time
-    val words = remember(note.content) { note.content.split(Regex("\\s+")).count { it.isNotBlank() } }
-    val readTimeChars = if (words > 10) "${words / 200 + 1} min read" else "$words words"
-
-    // Analyze attachments/metadata inside note's content to decorate card beautifully
+    // Analyze once per content change off the frame-rendering thread.
     val cardPreview by produceState(com.omni.noteplus.ui.components.NoteCardPreview("", emptySet()), note.content, note.isLocked) {
-        value = if (note.isLocked) com.omni.noteplus.ui.components.NoteCardPreview("", emptySet())
-            else withContext(Dispatchers.Default) { NoteMarkdownParser.cardPreview(note.content) }
+        value = withContext(Dispatchers.Default) {
+            if (note.isLocked) NoteMarkdownParser.cardMetadata(note.content)
+            else NoteMarkdownParser.cardPreview(note.content)
+        }
     }
+    val words = cardPreview.words
+    val readTimeChars = if (words > 10) "${words / 200 + 1} min read" else "$words words"
     val hasVoice = com.omni.noteplus.ui.components.AttachmentKind.AUDIO in cardPreview.media
     val hasFile = com.omni.noteplus.ui.components.AttachmentKind.FILE in cardPreview.media
     val hasImage = com.omni.noteplus.ui.components.AttachmentKind.IMAGE in cardPreview.media
-    val hasTable = note.content.contains("|") && note.content.contains("---|")
-    val hasCode = note.content.contains("```")
-    val hasChecklist = remember(note.content) { Regex("""(?m)^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]""").containsMatchIn(note.content) }
+    val hasTable = cardPreview.hasTable
+    val hasCode = cardPreview.hasCode
+    val hasChecklist = cardPreview.hasChecklist
 
     Card(
         modifier = modifier

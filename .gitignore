@@ -16,3 +16,12 @@
 local.properties
 .env
 debug.keystore
+*.keystore
+*.jks
+*.apk
+*.aab
+*.apks
+*.patch
+__pycache__/
+*.pyc
+/dist/

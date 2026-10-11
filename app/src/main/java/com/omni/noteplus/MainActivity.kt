@@ -20,7 +20,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.room.Room
 import com.omni.noteplus.data.AppDatabase
 import com.omni.noteplus.data.NoteRepository
 import com.omni.noteplus.ui.navigation.Screen
@@ -38,11 +37,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         // Initialize Database
-        val database = Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java,
-            "omninote_database"
-        ).addMigrations(*com.omni.noteplus.data.DatabaseMigrations.all).build()
+        val database = AppDatabase.getInstance(applicationContext)
         
         val repository = NoteRepository(database.noteDao(), database)
         

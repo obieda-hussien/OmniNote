@@ -6,10 +6,14 @@ import org.commonmark.parser.IncludeSourceSpans
 import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 
-data class NoteCardPreview(val text: String, val media: Set<AttachmentKind>)
+data class NoteCardPreview(
+    val text: String, val media: Set<AttachmentKind>, val words: Int = 0,
+    val hasTable: Boolean = false, val hasCode: Boolean = false, val hasChecklist: Boolean = false
+)
 
 /** Parse once per document; source spans keep preview tasks tied to the correct source line. */
 object NoteMarkdownParser {
+    private val checklist = Regex("""(?m)^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]""")
     private val parser = Parser.builder()
         .extensions(listOf(TablesExtension.create(), StrikethroughExtension.create()))
         .includeSourceSpans(IncludeSourceSpans.BLOCKS_AND_INLINES)
@@ -20,6 +24,18 @@ object NoteMarkdownParser {
         return PreviewDocument(parser.parse(compatible.lines.joinToString("\n")), compatible.lines, compatible.sourceLines)
     }
     fun preview(source: String): String = cardPreview(source).text
+    fun cardMetadata(source: String): NoteCardPreview {
+        var words = 0
+        var inWord = false
+        for (character in source) {
+            // Match the former ASCII-whitespace split without allocating one String per word.
+            val whitespace = character == ' ' || character in '\t'..'\r'
+            if (whitespace) inWord = false
+            else if (!character.isWhitespace() && !inWord) { words++; inWord = true }
+        }
+        return NoteCardPreview("", emptySet(), words,
+            source.contains('|') && source.contains("---|"), source.contains("```"), checklist.containsMatchIn(source))
+    }
     fun cardPreview(source: String): NoteCardPreview {
         val media = mutableSetOf<AttachmentKind>()
         val result = StringBuilder()
@@ -52,7 +68,7 @@ object NoteMarkdownParser {
             if (node is org.commonmark.node.Paragraph || node is org.commonmark.node.Heading) result.append('\n')
         }
         append(parseDocument(source.take(8000)).root)
-        return NoteCardPreview(result.toString().trim().take(1000), media)
+        return cardMetadata(source).copy(text = result.toString().trim().take(1000), media = media)
     }
 }
 

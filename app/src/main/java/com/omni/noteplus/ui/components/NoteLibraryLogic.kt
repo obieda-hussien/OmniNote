@@ -4,10 +4,11 @@ import com.omni.noteplus.data.NoteEntity
 
 /** One filtering policy shared by the pager and its contextual actions. */
 fun libraryNotes(notes: List<NoteEntity>, tag: String?, query: String, sort: String, pinnedOnly: Boolean): List<NoteEntity> {
+    val trimmedQuery = query.trim()
     val filtered = notes.filter { note ->
-        (tag == null || tag in note.tags.split(',').map { it.trim() }) &&
-            (query.isBlank() || note.title.contains(query.trim(), ignoreCase = true) || note.content.contains(query.trim(), ignoreCase = true)) &&
-            (!pinnedOnly || note.isPinned)
+        (!pinnedOnly || note.isPinned) &&
+            (tag == null || note.tags.splitToSequence(',').any { it.trim() == tag }) &&
+            (trimmedQuery.isEmpty() || note.title.contains(trimmedQuery, ignoreCase = true) || note.content.contains(trimmedQuery, ignoreCase = true))
     }
     val sorted = when (sort) {
         "oldest" -> filtered.sortedBy { it.timestamp }

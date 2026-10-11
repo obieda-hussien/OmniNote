@@ -10,6 +10,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -105,13 +109,19 @@ class NotesViewModel(private val repository: NoteRepository) : ViewModel() {
     val allNotes: StateFlow<List<NoteEntity>> = repository.allNotes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val activeNotes: StateFlow<List<NoteEntity>> = repository.activeNotes
+    val activeNotes: StateFlow<List<NoteEntity>> = allNotes
+        .map { notes -> notes.filter { !it.isArchived && !it.isTrashed }.sortedByDescending { it.isPinned } }
+        .distinctUntilChanged().flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val archivedNotes: StateFlow<List<NoteEntity>> = repository.archivedNotes
+    val archivedNotes: StateFlow<List<NoteEntity>> = allNotes
+        .map { notes -> notes.filter { it.isArchived && !it.isTrashed } }
+        .distinctUntilChanged().flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val trashedNotes: StateFlow<List<NoteEntity>> = repository.trashedNotes
+    val trashedNotes: StateFlow<List<NoteEntity>> = allNotes
+        .map { notes -> notes.filter { it.isTrashed } }
+        .distinctUntilChanged().flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     suspend fun createQuickNote(content: String): NoteEntity = withContext(NonCancellable) {

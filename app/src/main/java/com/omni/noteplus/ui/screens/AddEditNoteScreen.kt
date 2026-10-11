@@ -1,6 +1,7 @@
 package com.omni.noteplus.ui.screens
 
 import android.content.Intent
+import com.omni.noteplus.R
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import okhttp3.OkHttpClient
@@ -346,7 +347,7 @@ fun AddEditNoteScreen(
     suspend fun refineTextWithAI(prompt: String): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val apiKey = com.omni.noteplus.BuildConfig.GEMINI_API_KEY
         if (apiKey.isBlank() || apiKey == "YOUR_API_KEY_HERE" || apiKey.startsWith("YOUR_")) {
-            return@withContext "Error: Please configure your Gemini API Key in the Secrets panel."
+            return@withContext "Error: " + context.getString(R.string.ai_refinement_unavailable)
         }
 
         val client = okhttp3.OkHttpClient.Builder()
