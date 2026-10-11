@@ -33,7 +33,11 @@ fun paragraphParts(paragraph: Node): List<ParagraphPart> = buildList {
                 when (type) {
                     "voice", "audio" -> ParagraphPart.Audio(node.destination,
                         if (name.startsWith("file:") || name.startsWith("content:")) "Voice recording" else name)
-                    "file" -> ParagraphPart.File(node.destination, name)
+                    "file" -> when (attachmentKind(node.destination, name)) {
+                        AttachmentKind.IMAGE -> ParagraphPart.Photo(node.destination, name)
+                        AttachmentKind.AUDIO -> ParagraphPart.Audio(node.destination, name)
+                        AttachmentKind.FILE -> ParagraphPart.File(node.destination, name)
+                    }
                     else -> null
                 }
             }

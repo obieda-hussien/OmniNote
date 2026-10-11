@@ -2,7 +2,7 @@ package com.omninote.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.omninote.data.NoteEntity
+import com.omninote.data.*
 import com.omninote.data.NoteRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +17,10 @@ import kotlinx.coroutines.sync.withLock
 import com.omninote.ui.editor.EditorDraft
 
 sealed class NoteEvent {
+    data class ActionCompleted(val receipt: NoteActionReceipt) : NoteEvent()
+    data class Failed(val message: String, val retry: (() -> Unit)? = null) : NoteEvent()
+    data object UndoCompleted : NoteEvent()
+    data object TrashEmptied : NoteEvent()
     data class Trashed(val note: NoteEntity, val message: String = "Moved to Trash") : NoteEvent()
     data class Archived(val note: NoteEntity, val message: String = "Note Archived") : NoteEvent()
     data class Restored(val note: NoteEntity, val message: String = "Note Restored") : NoteEvent()
@@ -127,47 +131,54 @@ class NotesViewModel(private val repository: NoteRepository) : ViewModel() {
         }
     }
     
-    fun moveToTrash(note: NoteEntity) {
-        viewModelScope.launch {
-            val noteWithTrash = note.copy(isTrashed = true)
-            repository.insert(noteWithTrash)
-            _noteEvent.emit(NoteEvent.Trashed(noteWithTrash))
-        }
-    }
-    
-    fun restoreFromTrash(note: NoteEntity) {
-        viewModelScope.launch {
-            val restoredNote = note.copy(isTrashed = false)
-            repository.insert(restoredNote)
-            _noteEvent.emit(NoteEvent.Restored(restoredNote))
-        }
-    }
+    private val _pendingActions = kotlinx.coroutines.flow.MutableStateFlow<Set<Int>>(emptySet())
+    val pendingActions: StateFlow<Set<Int>> = _pendingActions
+    private var emptyingTrash = false
 
-    fun archiveNote(note: NoteEntity) {
+    fun performLibraryAction(note: NoteEntity, action: NoteLibraryAction, pin: String? = null) {
+        if (note.id in _pendingActions.value || emptyingTrash) return
+        _pendingActions.value += note.id
         viewModelScope.launch {
-            val archivedNote = note.copy(isArchived = true)
-            repository.insert(archivedNote)
-            _noteEvent.emit(NoteEvent.Archived(archivedNote))
+            try {
+                val receipt = repository.applyLibraryAction(note.id, action, note.libraryState(), pin)
+                _noteEvent.emit(NoteEvent.ActionCompleted(receipt))
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                val retry = if (error is NoteActionConflictException || error is NoteActionLockedException) null
+                    else ({ performLibraryAction(note, action, pin) })
+                _noteEvent.emit(NoteEvent.Failed(when (error) {
+                    is NoteActionConflictException -> "This note changed. Please try again from its current section."
+                    is NoteActionLockedException -> "This note is locked. Unlock it and try again."
+                    else -> "Could not move or delete this note. Your note is still saved."
+                }, retry))
+            } finally { _pendingActions.value -= note.id }
         }
     }
-
-    fun unarchiveNote(note: NoteEntity) {
+    fun undoLibraryAction(receipt: NoteActionReceipt) {
+        if (receipt.noteId in _pendingActions.value || emptyingTrash) return
+        _pendingActions.value += receipt.noteId
         viewModelScope.launch {
-            val unarchivedNote = note.copy(isArchived = false)
-            repository.insert(unarchivedNote)
-            _noteEvent.emit(NoteEvent.Unarchived(unarchivedNote))
+            try { repository.undoLibraryAction(receipt); _noteEvent.emit(NoteEvent.UndoCompleted) }
+            catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _noteEvent.emit(NoteEvent.Failed("Could not undo. The note may have changed or been deleted."))
+            } finally { _pendingActions.value -= receipt.noteId }
         }
     }
-
-    fun deleteNotePermanent(note: NoteEntity) {
-        viewModelScope.launch {
-            repository.delete(note)
-        }
-    }
-    
+    fun moveToTrash(note: NoteEntity) = performLibraryAction(note, NoteLibraryAction.TRASH)
+    fun restoreFromTrash(note: NoteEntity) = performLibraryAction(note, NoteLibraryAction.RESTORE)
+    fun archiveNote(note: NoteEntity) = performLibraryAction(note, NoteLibraryAction.ARCHIVE)
+    fun unarchiveNote(note: NoteEntity) = performLibraryAction(note, NoteLibraryAction.UNARCHIVE)
+    fun deleteNotePermanent(note: NoteEntity, pin: String? = null) = performLibraryAction(note, NoteLibraryAction.DELETE, pin)
     fun emptyTrash() {
+        if (emptyingTrash || _pendingActions.value.isNotEmpty()) return
+        emptyingTrash = true
         viewModelScope.launch {
-            repository.emptyTrash()
+            try { repository.emptyTrash(); _noteEvent.emit(NoteEvent.TrashEmptied) }
+            catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _noteEvent.emit(NoteEvent.Failed("Could not empty trash. Your notes are still saved.", { emptyTrash() }))
+            } finally { emptyingTrash = false }
         }
     }
 

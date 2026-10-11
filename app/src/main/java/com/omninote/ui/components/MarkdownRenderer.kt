@@ -407,6 +407,23 @@ fun AudioPlayerLayout(uriString: String, label: String) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileAttachmentLayout(uriString: String, filename: String) {
+    val context = LocalContext.current
+    val kind by produceState(attachmentKind(uriString, filename), uriString, filename) {
+        val mime = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { context.contentResolver.getType(Uri.parse(uriString)) }.getOrNull()
+        }
+        value = attachmentKind(uriString, filename, mime)
+    }
+    when (kind) {
+        AttachmentKind.IMAGE -> ImageLayout(uriString, filename)
+        AttachmentKind.AUDIO -> AudioPlayerLayout(uriString, filename)
+        AttachmentKind.FILE -> GenericFileAttachmentLayout(uriString, filename)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GenericFileAttachmentLayout(uriString: String, filename: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var showOptionsDialog by remember { mutableStateOf(false) }
     val mimeType = remember(uriString, filename) { getMimeType(uriString, filename) }

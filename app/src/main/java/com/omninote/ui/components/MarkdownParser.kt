@@ -26,7 +26,11 @@ object NoteMarkdownParser {
                     val label = node.children().filterIsInstance<org.commonmark.node.Text>().joinToString("") { it.literal }
                     when {
                         label.startsWith("voice") || label.startsWith("audio") -> result.append("[Voice clip]")
-                        label.startsWith("file:") -> result.append("[Attachment]")
+                        label.startsWith("file:") -> result.append(when (attachmentKind(node.destination, label.substringAfter(':'))) {
+                            AttachmentKind.IMAGE -> "[Image]"
+                            AttachmentKind.AUDIO -> "[Voice clip]"
+                            AttachmentKind.FILE -> "[Attachment]"
+                        })
                         else -> node.children().forEach { append(it) }
                     }
                 }

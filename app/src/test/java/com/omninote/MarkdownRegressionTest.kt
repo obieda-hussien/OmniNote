@@ -101,4 +101,34 @@ class MarkdownRegressionTest {
         while (child != null) { count++; child = child.next }
         return count
     }
+    @Test fun genericFileLinksDetectImagesAndAudioUsingRealPathsOrNames() {
+        val source = "[file:IMG_2026-10-11-08-17-23-559.jpg](file:///data/user/0/com.aistudio.omninote.premium/files/1791718548206_IMG_2026-10-11-08-17-23-559.jpg)\n[file:Track.M4A](content://files/21)\n[file:Archive.pdf](file:///archive.pdf)\n`[file:literal.jpg](file:///x.jpg)`"
+        val parts = paragraphParts(NoteMarkdownParser.parse(source).firstChild)
+        assertEquals(1, parts.filterIsInstance<ParagraphPart.Photo>().size)
+        assertEquals(1, parts.filterIsInstance<ParagraphPart.Audio>().size)
+        assertEquals(1, parts.filterIsInstance<ParagraphPart.File>().size)
+        assertEquals(AttachmentKind.AUDIO, attachmentKind("content://opaque/1", "unknown", "audio/mpeg"))
+        assertEquals(AttachmentKind.FILE, attachmentKind("file:///real.pdf", "wrong.jpg"))
+        assertEquals(AttachmentKind.FILE, attachmentKind("content://opaque/1", "wrong.jpg", "application/pdf"))
+        assertEquals(AttachmentKind.IMAGE, attachmentKind("file:///photo%20one.PNG?token=1", "unknown"))
+    }
+    @Test fun genericPhotoAndAudioFileLinksActuallyRenderMediaControls() {
+        compose.setContent { MyApplicationTheme {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                MarkdownContent("[file:Photo.jpg](file:///photo.jpg)\n[file:Song.mp3](file:///song.mp3)")
+            }
+        } }
+        compose.onNodeWithContentDescription("Photo.jpg").assertIsDisplayed()
+        compose.onNodeWithText("Song.mp3").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Play").assertHasClickAction()
+        compose.onNodeWithContentDescription("File attachment").assertDoesNotExist()
+    }
+    @Test fun importedLabelsAndDestinationsKeepBracketsSpacesAndParenthesesIntact() {
+        val markdown = attachmentMarkdown("file:///a (b).jpg", "Photo [one].jpg", "image/jpeg")
+        val photo = paragraphParts(NoteMarkdownParser.parse(markdown).firstChild).filterIsInstance<ParagraphPart.Photo>().single()
+        assertEquals("Photo [one].jpg", photo.description)
+        assertEquals("file:///a%20(b).jpg", photo.uri)
+        val audio = attachmentMarkdown("file:///a.m4a", "Recording", "audio/mp4")
+        assertEquals("Recording", paragraphParts(NoteMarkdownParser.parse(audio).firstChild).filterIsInstance<ParagraphPart.Audio>().single().label)
+    }
 }

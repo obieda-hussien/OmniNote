@@ -138,32 +138,13 @@ fun AddEditNoteScreen(
                 buffer.insert("\n\n$text")
             }
         }
-        if (viewModel.sharedUris != null) {
-            val uris = viewModel.sharedUris!!
-            uris.forEach { uri ->
-                val mimeType = context.contentResolver.getType(uri) ?: ""
-                val internalUri = copyUriToInternalStorage(context, uri, "shared_file")
-
-                if (mimeType.startsWith("image/")) {
-                     buffer.insert("\n\n![Shared Image]($internalUri)\n\n")
-                } else {
-                     var displayFileName = "Shared_File"
-                     try {
-                         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                             val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                             if (nameIdx != -1 && cursor.moveToFirst()) {
-                                 val n = cursor.getString(nameIdx)
-                                 if(!n.isNullOrBlank()) displayFileName = n
-                             }
-                         }
-                     } catch (e: Exception) {}
-
-                     if (mimeType.startsWith("audio/")) {
-                         buffer.insert("\n\n[voice:$internalUri]($internalUri)\n\n")
-                     } else {
-                         buffer.insert("\n\n[file:$displayFileName]($internalUri)\n\n")
-                     }
-                }
+        viewModel.sharedUris.orEmpty().forEach { uri ->
+            try {
+                val attachment = importAttachment(context, uri, "Shared file")
+                buffer.insert("\n\n$attachment\n\n")
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                snackbar.showSnackbar("Could not attach this file. Please select it again.")
             }
         }
         viewModel.consumeSharedContent()
@@ -187,8 +168,12 @@ fun AddEditNoteScreen(
     ) { uri: android.net.Uri? ->
         uri?.let {
             coroutineScope.launch {
-                val internalUri = copyUriToInternalStorage(context, it, "image.jpg")
-                buffer.insert("\n\n![Image]($internalUri)\n\n")
+                try {
+                    buffer.insert("\n\n${importAttachment(context, it, "Image")}\n\n")
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    snackbar.showSnackbar("Could not attach this image. Please select it again.")
+                }
             }
         }
     }
@@ -198,19 +183,12 @@ fun AddEditNoteScreen(
     ) { uri: android.net.Uri? ->
         uri?.let {
             coroutineScope.launch {
-                var displayFileName = "Attached_File"
                 try {
-                    context.contentResolver.query(it, null, null, null, null)?.use { cursor ->
-                        val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (nameIdx != -1 && cursor.moveToFirst()) {
-                            val n = cursor.getString(nameIdx)
-                            if (!n.isNullOrBlank()) displayFileName = n
-                        }
-                    }
-                } catch (e: Exception) {}
-
-                val internalUri = copyUriToInternalStorage(context, it, displayFileName)
-                buffer.insert("\n\n[file:$displayFileName]($internalUri)\n\n")
+                    buffer.insert("\n\n${importAttachment(context, it, "Attachment")}\n\n")
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    snackbar.showSnackbar("Could not attach this file. Please select it again.")
+                }
             }
         }
     }
@@ -2252,32 +2230,32 @@ fun PremiumInteractiveCard(
     }
 }
 
-suspend fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri, defaultName: String): android.net.Uri {
-    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        var fileName = defaultName
-        try {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIdx != -1 && cursor.moveToFirst()) {
-                    val name = cursor.getString(nameIdx)
-                    if (!name.isNullOrBlank()) fileName = name
-                }
-            }
-        } catch (e: Exception) {}
+private suspend fun importAttachment(context: android.content.Context, uri: android.net.Uri, fallback: String): String =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val name = attachmentName(context, uri, fallback)
+        val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+        val internal = copyUriToInternalStorage(context, uri, name)
+        com.omninote.ui.components.attachmentMarkdown(internal.toString(), name, mime)
+    }
 
-        val time = System.currentTimeMillis()
-        val finalFileName = "${time}_${fileName.replace(" ", "_").replace("/", "_")}"
+private fun attachmentName(context: android.content.Context, uri: android.net.Uri, fallback: String): String =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0)?.takeIf { it.isNotBlank() } else null
+        }
+    }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: fallback
 
-        val destFile = java.io.File(context.filesDir, finalFileName)
+suspend fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri, defaultName: String): android.net.Uri =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val name = attachmentName(context, uri, defaultName)
+            .replace(Regex("[\\\\/\\p{Cntrl}]"), "_").take(120).ifBlank { "Attachment" }
+        val file = java.io.File(context.filesDir, "${java.util.UUID.randomUUID()}_$name")
         try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                java.io.FileOutputStream(destFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            android.net.Uri.fromFile(destFile)
-        } catch (e: Exception) {
-            uri
+            val input = context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Attachment unavailable")
+            input.use { source -> file.outputStream().use { source.copyTo(it) } }
+            android.net.Uri.fromFile(file)
+        } catch (error: Exception) {
+            file.delete()
+            throw error
         }
     }
-}

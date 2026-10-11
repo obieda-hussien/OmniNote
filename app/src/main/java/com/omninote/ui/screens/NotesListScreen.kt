@@ -57,7 +57,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.omninote.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.omninote.data.NoteEntity
+import com.omninote.data.*
+import com.omninote.ui.components.NoteSwipeCard
+import com.omninote.ui.components.actionLabel
 import com.omninote.ui.viewmodels.NotesViewModel
 import android.content.Intent
 import androidx.compose.ui.platform.LocalContext
@@ -207,6 +209,7 @@ fun NotesListScreen(
     val activeNotes by viewModel.activeNotes.collectAsStateWithLifecycle()
     val archivedNotes by viewModel.archivedNotes.collectAsStateWithLifecycle()
     val trashedNotes by viewModel.trashedNotes.collectAsStateWithLifecycle()
+    val pendingActions by viewModel.pendingActions.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("OmniNotePrefs", android.content.Context.MODE_PRIVATE) }
@@ -260,6 +263,17 @@ fun NotesListScreen(
     LaunchedEffect(Unit) {
         viewModel.noteEvent.collect { event ->
             when (event) {
+                is com.omninote.ui.viewmodels.NoteEvent.ActionCompleted -> {
+                    val receipt = event.receipt
+                    showCustomSnackbar(context.getString(actionLabel(receipt.action)), receipt.title.ifBlank { "Untitled Note" },
+                        if (receipt.action == NoteLibraryAction.DELETE) SnackbarType.ERROR else SnackbarType.SUCCESS,
+                        actionLabel = if (receipt.undoToken != null) "UNDO" else null,
+                        onAction = receipt.undoToken?.let { { viewModel.undoLibraryAction(receipt) } })
+                }
+                is com.omninote.ui.viewmodels.NoteEvent.Failed -> showCustomSnackbar("Could not complete action", event.message,
+                    SnackbarType.ERROR, if (event.retry != null) "RETRY" else null, event.retry)
+                com.omninote.ui.viewmodels.NoteEvent.UndoCompleted -> showCustomSnackbar("Action undone", "The previous section was restored.", SnackbarType.SUCCESS)
+                com.omninote.ui.viewmodels.NoteEvent.TrashEmptied -> showCustomSnackbar("Trash emptied", "Trashed notes were permanently deleted.", SnackbarType.INFO)
                 is com.omninote.ui.viewmodels.NoteEvent.Trashed -> {
                     showCustomSnackbar(
                         title = "Moved to Trash",
@@ -320,6 +334,17 @@ fun NotesListScreen(
 
     // Permanent deletion confirmation state
     var noteToDeletePermanently by remember { mutableStateOf<NoteEntity?>(null) }
+    var authorizedNote by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    fun requestNoteAction(note: NoteEntity, action: NoteLibraryAction) {
+        val pin = authorizedNote?.takeIf { it.first == note.id }?.second
+        if (note.isLocked && pin != note.lockPin) {
+            noteToUnlock = note
+            unlockPin = ""
+            unlockError = false
+            unlockActionType = "library:${action.name}"
+        } else if (action == NoteLibraryAction.DELETE) noteToDeletePermanently = note
+        else viewModel.performLibraryAction(note, action, pin)
+    }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
 
     // Retrieve unique tags from all stored notes
@@ -667,7 +692,7 @@ fun NotesListScreen(
             // Cards Swipable Pager (HorizontalPager)
             HorizontalPager(
                 state = pagerState,
-                userScrollEnabled = true,
+                userScrollEnabled = false, // Horizontal card gestures own archive/trash; tabs navigate sections.
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
@@ -807,6 +832,9 @@ fun NotesListScreen(
                             modifier = Modifier.fillMaxSize().nestedScroll(scrollConnection).testTag("note_library_grid")
                         ) {
                             itemsIndexed(pageFilteredAndSortedNotes, key = { _, note -> note.id }) { index, note ->
+                                NoteSwipeCard(note, enabled = note.id !in pendingActions && noteToUnlock == null && noteToDeletePermanently == null && pagerState.settledPage == page,
+                                    onAction = { requestNoteAction(note, it) },
+                                    modifier = Modifier.animateItem(fadeInSpec = tween(220), fadeOutSpec = tween(220), placementSpec = tween(220, easing = FastOutSlowInEasing))) {
                                 NoteCard(
                                     note = note,
                                     searchQuery = searchQuery,
@@ -842,12 +870,9 @@ fun NotesListScreen(
                                             viewModel.togglePin(note)
                                         }
                                     },
-                                    modifier = Modifier.animateItem(
-                                        fadeInSpec = tween(220),
-                                        fadeOutSpec = tween(220),
-                                        placementSpec = tween(220, easing = FastOutSlowInEasing)
-                                    )
+                                    modifier = Modifier.fillMaxWidth()
                                 )
+                                }
                             }
                         }
                     } else {
@@ -862,165 +887,9 @@ fun NotesListScreen(
                             modifier = Modifier.fillMaxSize().nestedScroll(scrollConnection).testTag("note_library_list")
                         ) {
                             itemsIndexed(pageFilteredAndSortedNotes, key = { _, note -> note.id }) { index, note ->
-                                val dismissState = rememberSwipeToDismissBoxState(
-                                    confirmValueChange = { dismissValue ->
-                                        dismissValue == SwipeToDismissBoxValue.EndToStart || dismissValue == SwipeToDismissBoxValue.StartToEnd
-                                    }
-                                )
-
-                                var showDeleteDialogLocal by remember { mutableStateOf(false) }
-
-                                LaunchedEffect(dismissState.currentValue) {
-                                    val currentVal = dismissState.currentValue
-                                    if (currentVal == SwipeToDismissBoxValue.EndToStart) {
-                                        if (note.isLocked) {
-                                            noteToUnlock = note
-                                            unlockPin = ""
-                                            unlockError = false
-                                            unlockActionType = "delete"
-                                            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
-                                        } else {
-                                            when (currentTab) {
-                                                "TRASHED" -> {
-                                                    showDeleteDialogLocal = true
-                                                }
-                                                "ARCHIVED" -> {
-                                                    viewModel.moveToTrash(note)
-                                                }
-                                                else -> { // ACTIVE
-                                                     viewModel.moveToTrash(note)
-                                                }
-                                            }
-                                        }
-                                    } else if (currentVal == SwipeToDismissBoxValue.StartToEnd) {
-                                        if (note.isLocked) {
-                                            noteToUnlock = note
-                                            unlockPin = ""
-                                            unlockError = false
-                                            unlockActionType = "restore"
-                                            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
-                                        } else {
-                                            when (currentTab) {
-                                                "TRASHED" -> {
-                                                    viewModel.restoreFromTrash(note)
-                                                }
-                                                "ARCHIVED" -> {
-                                                    viewModel.unarchiveNote(note)
-                                                }
-                                                else -> { // ACTIVE
-                                                    viewModel.archiveNote(note)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (showDeleteDialogLocal) {
-                                    OmniConfirmDialog(
-                                        onDismissRequest = {
-                                            showDeleteDialogLocal = false
-                                            scope.launch {
-                                                dismissState.snapTo(SwipeToDismissBoxValue.Settled)
-                                            }
-                                        },
-                                        title = { Text(text = stringResource(R.string.delete_permanent_title)) },
-                                        text = { Text(text = stringResource(R.string.delete_permanent_msg)) },
-                                        confirmButton = {
-                                            TextButton(
-                                                onClick = {
-                                                    viewModel.deleteNotePermanent(note)
-                                                    showDeleteDialogLocal = false
-                                                    showCustomSnackbar(
-                                                        title = "Deleted Permanently",
-                                                        message = note.title.ifBlank { "Untitled Note" },
-                                                        type = SnackbarType.ERROR,
-                                                        actionLabel = "UNDO",
-                                                        onAction = {
-                                                            viewModel.updateNote(note)
-                                                        }
-                                                    )
-                                                }
-                                            ) {
-                                                Text(text = stringResource(R.string.delete_permanent_confirm), color = MaterialTheme.colorScheme.error)
-                                            }
-                                        },
-                                        dismissButton = {
-                                            TextButton(onClick = {
-                                                showDeleteDialogLocal = false
-                                                scope.launch {
-                                                    dismissState.snapTo(SwipeToDismissBoxValue.Settled)
-                                                }
-                                            }) {
-                                                Text(text = stringResource(R.string.delete_permanent_cancel))
-                                            }
-                                        }
-                                    )
-                                }
-
-                                SwipeToDismissBox(
-                                    state = dismissState,
-                                    modifier = Modifier.animateItem(
-                                        fadeInSpec = tween(220),
-                                        fadeOutSpec = tween(220),
-                                        placementSpec = tween(220, easing = FastOutSlowInEasing)
-                                    ),
-                                    backgroundContent = {
-                                        val activeDirection = if (dismissState.targetValue != SwipeToDismissBoxValue.Settled) {
-                                            dismissState.targetValue
-                                        } else {
-                                            dismissState.dismissDirection
-                                        }
-
-                                        val color by animateColorAsState(
-                                            when (dismissState.targetValue) {
-                                                SwipeToDismissBoxValue.Settled -> Color.Transparent
-                                                SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
-                                                SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
-                                                    "TRASHED" -> MaterialTheme.colorScheme.primaryContainer
-                                                    "ARCHIVED" -> MaterialTheme.colorScheme.secondaryContainer
-                                                    else -> MaterialTheme.colorScheme.tertiaryContainer
-                                                }
-                                            }
-                                        )
-                                        val alignment = when (activeDirection) {
-                                            SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
-                                            SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
-                                            else -> Alignment.CenterStart
-                                        }
-                                        val iconType = when (activeDirection) {
-                                            SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
-                                                "TRASHED" -> OmniIconType.UNARCHIVE
-                                                "ARCHIVED" -> OmniIconType.UNARCHIVE
-                                                else -> OmniIconType.ARCHIVE
-                                            }
-                                            else -> OmniIconType.DELETE
-                                        }
-                                        val iconTint = when (activeDirection) {
-                                            SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
-                                                "TRASHED" -> MaterialTheme.colorScheme.onPrimaryContainer
-                                                "ARCHIVED" -> MaterialTheme.colorScheme.onSecondaryContainer
-                                                else -> MaterialTheme.colorScheme.onTertiaryContainer
-                                            }
-                                            else -> MaterialTheme.colorScheme.onErrorContainer
-                                        }
-
-                                        Box(
-                                            Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(20.dp))
-                                                .background(color)
-                                                .padding(horizontal = 20.dp),
-                                            contentAlignment = alignment
-                                        ) {
-                                            if (activeDirection != SwipeToDismissBoxValue.Settled) {
-                                                OmniIcon(
-                                                    type = iconType,
-                                                    tint = iconTint
-                                                )
-                                            }
-                                        }
-                                    },
-                                    content = {
+                                NoteSwipeCard(note, enabled = note.id !in pendingActions && noteToUnlock == null && noteToDeletePermanently == null && pagerState.settledPage == page,
+                                    onAction = { requestNoteAction(note, it) },
+                                    modifier = Modifier.animateItem(fadeInSpec = tween(220), fadeOutSpec = tween(220), placementSpec = tween(220, easing = FastOutSlowInEasing))) {
                                         NoteCard(
                                             note = note,
                                             searchQuery = searchQuery,
@@ -1058,8 +927,7 @@ fun NotesListScreen(
                                             },
                                             modifier = Modifier.fillMaxWidth()
                                         )
-                                    }
-                                )
+                                }
                             }
                         }
                     }
@@ -1422,11 +1290,7 @@ fun NotesListScreen(
 
                     IconButton(
                         onClick = {
-                            if (currentTab == "TRASHED") {
-                                noteToDeletePermanently = note
-                            } else {
-                                viewModel.moveToTrash(note)
-                            }
+                            requestNoteAction(note, swipeAction(note, false))
                             showQuickActionsForNote = null
                         },
                         modifier = Modifier
@@ -1437,9 +1301,9 @@ fun NotesListScreen(
                         OmniIcon(OmniIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                     }
 
-                    if (currentTab != "ARCHIVED" && currentTab != "TRASHED") {
+                    if (!note.isArchived && !note.isTrashed) {
                         IconButton(
-                            onClick = { viewModel.archiveNote(note); showQuickActionsForNote = null },
+                            onClick = { requestNoteAction(note, NoteLibraryAction.ARCHIVE); showQuickActionsForNote = null },
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(CircleShape)
@@ -1447,9 +1311,9 @@ fun NotesListScreen(
                         ) {
                             OmniIcon(OmniIconType.ARCHIVE, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
                         }
-                    } else if (currentTab == "ARCHIVED") {
+                    } else if (note.isArchived && !note.isTrashed) {
                         IconButton(
-                            onClick = { viewModel.unarchiveNote(note); showQuickActionsForNote = null },
+                            onClick = { requestNoteAction(note, NoteLibraryAction.UNARCHIVE); showQuickActionsForNote = null },
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(CircleShape)
@@ -1485,16 +1349,8 @@ fun NotesListScreen(
                 TextButton(
                     onClick = {
                         noteToDeletePermanently?.let { note ->
-                            viewModel.deleteNotePermanent(note)
-                            showCustomSnackbar(
-                                title = "Deleted Permanently",
-                                message = note.title.ifBlank { "Untitled Note" },
-                                type = SnackbarType.ERROR,
-                                actionLabel = "UNDO",
-                                onAction = {
-                                    viewModel.updateNote(note)
-                                }
-                            )
+                            viewModel.deleteNotePermanent(note, authorizedNote?.takeIf { it.first == note.id }?.second)
+
                         }
                         noteToDeletePermanently = null
                     }
@@ -1520,11 +1376,7 @@ fun NotesListScreen(
                     onClick = {
                         viewModel.emptyTrash()
                         showEmptyTrashDialog = false
-                        showCustomSnackbar(
-                            title = "Trash Emptied",
-                            message = "All trashed notes have been permanently deleted.",
-                            type = SnackbarType.ERROR
-                        )
+
                     }
                 ) {
                     Text(text = stringResource(R.string.delete_permanent_confirm), color = MaterialTheme.colorScheme.error)
@@ -1616,26 +1468,15 @@ fun NotesListScreen(
                             val pinString = noteToUnlock?.lockPin ?: ""
                             if (unlockPin == pinString) {
                                 val unlockedNote = noteToUnlock!!
+                                authorizedNote = unlockedNote.id to unlockPin
                                 noteToUnlock = null
 
-                                when (unlockActionType) {
-                                    "edit" -> onNavigateToEditNote(unlockedNote.id)
-                                    "quick_actions" -> showQuickActionsForNote = unlockedNote
-                                    "toggle_pin" -> viewModel.togglePin(unlockedNote)
-                                    "delete" -> {
-                                        if (currentTab == "TRASHED") {
-                                            noteToDeletePermanently = unlockedNote
-                                        } else {
-                                            viewModel.moveToTrash(unlockedNote)
-                                        }
-                                    }
-                                    "restore" -> {
-                                        when (currentTab) {
-                                            "TRASHED" -> viewModel.restoreFromTrash(unlockedNote)
-                                            "ARCHIVED" -> viewModel.unarchiveNote(unlockedNote)
-                                            else -> viewModel.archiveNote(unlockedNote)
-                                        }
-                                    }
+                                when {
+                                    unlockActionType.startsWith("library:") -> requestNoteAction(unlockedNote, NoteLibraryAction.valueOf(unlockActionType.substringAfter(":")))
+                                    unlockActionType == "edit" -> onNavigateToEditNote(unlockedNote.id)
+                                    unlockActionType == "quick_actions" -> showQuickActionsForNote = unlockedNote
+                                    unlockActionType == "toggle_pin" -> viewModel.togglePin(unlockedNote)
+
                                 }
                             } else {
                                 unlockError = true

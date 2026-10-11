@@ -58,5 +58,10 @@
     <string name="activity_deleted">%1$d deleted forever</string>
     <string name="library_organized">Library organized</string>
     <string name="done">Done</string>
+    <string name="action_archive">Archive</string>
+    <string name="action_unarchive">Unarchive</string>
+    <string name="action_trash">Move to trash</string>
+    <string name="action_restore">Restore</string>
+    <string name="action_delete_permanently">Delete permanently</string>
 </resources>
 

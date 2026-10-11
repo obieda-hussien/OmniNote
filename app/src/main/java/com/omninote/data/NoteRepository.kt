@@ -20,6 +20,8 @@ class NoteRepository(
     val archivedNotes = noteDao.getArchivedNotes()
     val trashedNotes = noteDao.getTrashedNotes()
     private val history = database?.productivityDao()
+    private val undoTokens = java.util.concurrent.ConcurrentHashMap<Int, String>()
+    private val actionMutex = kotlinx.coroutines.sync.Mutex()
     val productivity: Flow<ProductivitySnapshot> = history?.let { dao ->
         combine(dao.observeTracking(), dao.observeNotes(), dao.observeDays()) { tracking, records, days ->
             ProductivitySnapshot(tracking, records, days)
@@ -68,6 +70,7 @@ class NoteRepository(
             else -> 0L
         }
         val noteId = noteDao.insertNote(note)
+        if (previous == null || previous.libraryState() != note.libraryState() || previous.lockPin != note.lockPin || previous.isLocked != note.isLocked) undoTokens.remove(noteId.toInt())
         val now = clock()
         val identity = before?.historyId ?: UUID.randomUUID().toString()
         dao.putNote(ProductivityNote(identity, noteId.toInt(), state(note), (before?.wordsAdded ?: 0) + additions,
@@ -99,6 +102,7 @@ class NoteRepository(
             val existing = noteDao.getNoteById(note.id) ?: return@withTransaction
             recordDeletion(existing)
             noteDao.deleteNote(existing)
+            undoTokens.remove(existing.id)
         }
     }
     suspend fun emptyTrash() {
@@ -106,7 +110,7 @@ class NoteRepository(
         if (db == null) { noteDao.emptyTrash(); return }
         db.withTransaction {
             initializeInTransaction()
-            history!!.currentNotes().filter { it.isTrashed }.forEach { recordDeletion(it) }
+            history!!.currentNotes().filter { it.isTrashed }.forEach { recordDeletion(it); undoTokens.remove(it.id) }
             noteDao.emptyTrash()
         }
     }
@@ -117,5 +121,44 @@ class NoteRepository(
             initializeInTransaction()
             noteDao.getNoteById(id)?.let { insertTracked(it.copy(isPinned = isPinned)) }
         }
+    }
+
+    private suspend fun <T> actionTransaction(block: suspend () -> T): T {
+        actionMutex.lock()
+        try { return if (database == null) block() else database.withTransaction { initializeInTransaction(); block() } }
+        finally { actionMutex.unlock() }
+    }
+    suspend fun applyLibraryAction(id: Int, action: NoteLibraryAction, expected: LibraryState, pin: String? = null): NoteActionReceipt = actionTransaction {
+        val latest = noteDao.getNoteById(id) ?: throw NoteActionConflictException()
+        if (latest.libraryState() != expected) throw NoteActionConflictException()
+        if (latest.isLocked && (pin == null || pin != latest.lockPin)) throw NoteActionLockedException()
+        val next = when (action) {
+            NoteLibraryAction.ARCHIVE -> latest.takeIf { expected.section == NoteSection.ACTIVE }?.copy(isArchived = true)
+            NoteLibraryAction.UNARCHIVE -> latest.takeIf { expected.section == NoteSection.ARCHIVED }?.copy(isArchived = false)
+            NoteLibraryAction.TRASH -> latest.takeIf { expected.section != NoteSection.TRASHED }?.copy(isTrashed = true)
+            NoteLibraryAction.RESTORE -> latest.takeIf { expected.section == NoteSection.TRASHED }?.copy(isTrashed = false)
+            NoteLibraryAction.DELETE -> null
+        }
+        if (action == NoteLibraryAction.DELETE) {
+            if (expected.section != NoteSection.TRASHED) throw NoteActionConflictException()
+            if (database != null) recordDeletion(latest)
+            noteDao.deleteNote(latest)
+            undoTokens.remove(id)
+            NoteActionReceipt(id, latest.title, action, expected, null, null, null)
+        } else {
+            val updated = next ?: throw NoteActionConflictException()
+            if (database == null) noteDao.insertNote(updated) else insertTracked(updated)
+            val token = UUID.randomUUID().toString()
+            undoTokens[id] = token
+            NoteActionReceipt(id, latest.title, action, expected, updated.libraryState(), token, pin)
+        }
+    }
+    suspend fun undoLibraryAction(receipt: NoteActionReceipt): Unit = actionTransaction {
+        val latest = noteDao.getNoteById(receipt.noteId) ?: throw NoteActionConflictException()
+        if (receipt.undoToken == null || undoTokens[receipt.noteId] != receipt.undoToken || latest.libraryState() != receipt.after) throw NoteActionConflictException()
+        if (latest.isLocked && (receipt.authorizedPin == null || latest.lockPin != receipt.authorizedPin)) throw NoteActionLockedException()
+        val restored = latest.copy(isArchived = receipt.before.archived, isTrashed = receipt.before.trashed)
+        if (database == null) noteDao.insertNote(restored) else insertTracked(restored)
+        undoTokens.remove(receipt.noteId)
     }
 }
