@@ -35,7 +35,8 @@ family: a purple palette and a clear rounded O/note/+ mark.
 
 ### Media and capture
 
-- Attach images, audio and documents; readable imports are copied into private
+- Choose images, audio and documents through the Android system file picker,
+  without broad media/storage permissions; readable imports are copied into private
   app storage with sanitized, unique filenames.
 - Display image previews, audio controls and file cards inside Markdown.
 - Recognize supported image/audio extensions in existing generic file links.
@@ -103,7 +104,9 @@ apps from the selected browser/file manager.
 | --- | --- |
 | Debug APK | Installable development build, signed with a debug certificate |
 | `release-unsigned` APK | Release compilation check; needs signing before installation |
-| `release-signed` APK | Release build using the configured production signing key |
+| `release-signed` APK | Release build using the configured signing key |
+| `AAB-release-unsigned` | Optimized app bundle; sign with your upload key before Play Console upload |
+| `AAB-release-signed` | App bundle signed with the configured key, for Play Console upload |
 | Quality / unit-test reports | Lint output and test results |
 | Trivy report | Filesystem/dependency scan result |
 
@@ -150,7 +153,7 @@ chmod +x gradlew
 ./gradlew :app:testDebugUnitTest
 
 # Release compilation; unsigned unless signing variables are configured
-./gradlew :app:assembleRelease
+./gradlew :app:assembleRelease :app:bundleRelease
 ```
 
 On Windows, use `gradlew.bat` with the same tasks. Instrumented tests are available
@@ -195,6 +198,49 @@ Use a durable private key and keep its backup outside Git. A temporary or debug
 key is not used as a replacement for a production key. Keystores and build
 artifacts are ignored by Git.
 
+## Google Play publication
+
+New app releases use the **AAB**, not the standalone APK. The bundle is built at
+`app/build/outputs/bundle/release/app-release.aab`; the APK remains available under
+`app/build/outputs/apk/release/`. CI uploads each in a separate ZIP artifact.
+It validates the bundle with pinned bundletool 1.18.3 (SHA-256 checked) and verifies
+its application ID, version code and version name against Gradle.
+
+An unsigned AAB is a build output, not a Play-ready upload. Sign it with your durable
+**upload key**, or configure the signing variables above and rebuild. For a new
+Play app, Play App Signing can generate and retain the distribution signing key;
+your upload key authenticates the AAB you send to Play. Both keys have different
+roles. Keep the upload keystore and its passwords private and backed up.
+
+Recommended initial Console settings:
+
+| Field | Value |
+| --- | --- |
+| App name | Omni Note+ |
+| Package | `com.omni.noteplus` (must match the bundle; permanent once registered) |
+| Default listing language | English (United States), matching the current app UI; add Arabic listing text separately |
+| Type | App |
+| Pricing | Free, if that is your intended business model |
+| Category | Productivity |
+
+Before rollout, supply real screenshots, a store icon/feature graphic, a public
+HTML privacy-policy URL and accurate App content/Data safety declarations. The
+included `privacy_policy.html` is source material; a GitHub source-file page is
+not a hosted policy page. Core editing is local, but optional dictation, remote
+media and any configured Gemini build must be considered in the disclosures.
+No advertising or analytics SDK is configured in this project.
+
+Start with internal testing and check editor saving, attachments, recording,
+sharing, RTL layout and R8-optimized behavior on real devices. Personal developer
+accounts created after November 13, 2023 require a closed test with at least 12
+continuously opted-in testers for 14 days before applying for production access.
+Answer Console policy/export declarations only after reviewing and accepting the
+terms. Publishing every update requires a new, higher Android version code.
+
+Official guidance: [app setup](https://support.google.com/googleplay/android-developer/answer/9859152),
+[Play App Signing](https://support.google.com/googleplay/android-developer/answer/9842756),
+[testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465).
+
 ## CI/CD behavior
 
 The workflow runs on pushes to `main`/`develop`, pull requests, version tags and
@@ -202,23 +248,24 @@ manual dispatch. Every job uses **Ubuntu 24.04** explicitly. Android SDK setup u
 `android-actions/setup-android@v4`, whose action runtime is Node.js 24.
 
 1. Lint, unit tests and a Trivy scan run independently.
-2. Debug and Release APK builds run after those checks pass.
+2. Debug APK and Release APK/AAB builds run after those checks pass.
 3. Artifacts and reports are uploaded, and the final job records pipeline status.
 
 Pull-request Release checks are deliberately unsigned and do not receive signing
 credentials. On ordinary branch pushes, Release is signed when all signing secrets
-are present; with no secrets it produces a clearly labelled unsigned artifact.
+are present; with no secrets it produces separately labelled unsigned APK and AAB artifacts.
 Partial/invalid signing configuration fails rather than silently falling back.
 
 A version tag such as `v1.0.0` requires valid production signing, verifies the
-APK signature with `apksigner`, and only then publishes a GitHub Release. An
-unsigned APK is never published as a tagged production release.
+APK signature with `apksigner` and AAB signature with `jarsigner`, and only then
+publishes both files in a GitHub Release. Unsigned artifacts are never published
+as a tagged production release.
 
 Manual dispatch options:
 
 | Input | Default | Behavior |
 | --- | --- | --- |
-| `build_release` | `true` | Include Release compilation; disable to run Debug/checks only |
+| `build_release` | `true` | Include Release APK and AAB compilation; disable to run Debug/checks only |
 | `require_signing` | `false` | Fail if a requested Release lacks a valid production key |
 | `enable_extended_checks` | `false` | Also compile Release Kotlin and run Release unit tests |
 
@@ -260,6 +307,7 @@ same build type: Debug and optimized Release are different outputs.
 | `docs/branding/omni-noteplus.svg` | Editable vector brand reference |
 | `gradle/` | Wrapper and dependency version catalog |
 | `.github/scripts/verify-apk.py` | Checks compiled APK identity/version against Gradle |
+| `.github/scripts/verify-bundle.py` | Validates the AAB with bundletool and checks identity/version |
 | `.github/workflows/ci.yml` | Quality checks, tests, builds and release publication |
 
 Launcher resources include standard/round legacy icons for five densities,

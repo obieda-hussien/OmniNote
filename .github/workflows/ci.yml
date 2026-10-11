@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       build_release:
-        description: "Build a Release APK (signed when configured)"
+        description: "Build Release APK and AAB (signed when configured)"
         required: false
         default: true
         type: boolean
@@ -328,7 +328,7 @@ jobs:
             fi
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "mode=unsigned" >> "$GITHUB_OUTPUT"
-            echo "Release compilation will produce an unsigned APK; use Debug for installation." >> "$GITHUB_STEP_SUMMARY"
+            echo "Release compilation will produce unsigned APK and AAB artifacts. Use Debug for installation; sign the AAB with your upload key before uploading to Google Play." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -352,7 +352,7 @@ jobs:
           echo "ready=true" >> "$GITHUB_OUTPUT"
           echo "mode=signed" >> "$GITHUB_OUTPUT"
 
-      - name: Build release APK
+      - name: Build release APK and AAB
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=true -Dkotlin.incremental=false -Dorg.gradle.jvmargs=-Xmx4g"
           STORE_PASSWORD: ${{ steps.signing.outputs.ready == 'true' && secrets.KEYSTORE_PASSWORD || '' }}
@@ -360,7 +360,7 @@ jobs:
           KEY_PASSWORD: ${{ steps.signing.outputs.ready == 'true' && secrets.KEY_PASSWORD || '' }}
         run: |
           ./gradlew --no-daemon --max-workers 1 \
-            :app:assembleRelease
+            :app:assembleRelease :app:bundleRelease
 
       - name: Verify production signature
         if: steps.signing.outputs.ready == 'true'
@@ -372,12 +372,31 @@ jobs:
           for apk in app/build/outputs/apk/release/*.apk; do
             "$APKSIGNER" verify --verbose "$apk"
           done
+          for bundle in app/build/outputs/bundle/release/*.aab; do
+            LC_ALL=C jarsigner -verify "$bundle" > "$RUNNER_TEMP/bundle-signature.txt"
+            if ! grep -q 'jar verified\.' "$RUNNER_TEMP/bundle-signature.txt"; then
+              echo "::error::Release AAB signature verification failed."
+              exit 1
+            fi
+          done
 
       - name: Verify optimized release APK
         run: |
           python3 .github/scripts/verify-apk.py app/build/outputs/apk/release
           test -s app/build/outputs/mapping/release/mapping.txt
           du -h app/build/outputs/apk/release/*.apk
+
+      - name: Validate release AAB and verify identity
+        env:
+          BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar \
+            --output "$RUNNER_TEMP/bundletool.jar"
+          printf '%s  %s\n' "$BUNDLETOOL_SHA256" "$RUNNER_TEMP/bundletool.jar" | sha256sum --check -
+          python3 .github/scripts/verify-bundle.py \
+            app/build/outputs/bundle/release "$RUNNER_TEMP/bundletool.jar"
 
       - name: Upload R8 mapping and shrink reports
         uses: actions/upload-artifact@v6
@@ -388,11 +407,19 @@ jobs:
           retention-days: 30
 
       - name: Upload release APK
-        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: Omni-NotePlus-release-${{ steps.signing.outputs.mode || 'unsigned' }}-${{ github.run_number }}
           path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release AAB
+        uses: actions/upload-artifact@v6
+        with:
+          name: Omni-NotePlus-AAB-release-${{ steps.signing.outputs.mode || 'unsigned' }}-${{ github.run_number }}
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
           retention-days: 30
 
       - name: Cleanup keystore file
@@ -408,7 +435,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}

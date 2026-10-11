@@ -165,21 +165,6 @@ fun AddEditNoteScreen(
     var wizardBgColorSelected by remember { mutableStateOf<String?>(null) }
 
     // Media attachment pickers & launchers state
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
-        uri?.let {
-            coroutineScope.launch {
-                try {
-                    buffer.insert("\n\n${importAttachment(context, it, "Image")}\n\n")
-                } catch (error: Exception) {
-                    if (error is kotlinx.coroutines.CancellationException) throw error
-                    snackbar.showSnackbar("Could not attach this image. Please select it again.")
-                }
-            }
-        }
-    }
-
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
@@ -396,34 +381,6 @@ fun AddEditNoteScreen(
         }
     }
 
-    val imagePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionsMap ->
-        val allGranted = permissionsMap.values.all { it }
-        val partialGranted = permissionsMap[android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true
-        val imageGranted = permissionsMap[android.Manifest.permission.READ_MEDIA_IMAGES] == true || permissionsMap[android.Manifest.permission.READ_EXTERNAL_STORAGE] == true
-
-        if (allGranted || partialGranted || imageGranted) {
-            imagePickerLauncher.launch("image/*")
-        } else {
-            android.widget.Toast.makeText(context, "Storage/Media permission is required to select images", android.widget.Toast.LENGTH_LONG).show()
-        }
-    }
-
-    val filePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            filePickerLauncher.launch("*/*")
-        } else {
-            if (android.os.Build.VERSION.SDK_INT >= 33) {
-                filePickerLauncher.launch("*/*")
-            } else {
-                android.widget.Toast.makeText(context, "Storage permission is required to attach files", android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
     fun checkAndRequestRecordAudio() {
         val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
             context,
@@ -433,48 +390,6 @@ fun AddEditNoteScreen(
             showVoiceRecorderDialog = true
         } else {
             recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-        }
-    }
-
-    fun checkAndRequestImageStorage() {
-        val sdkInt = android.os.Build.VERSION.SDK_INT
-        val permissionsToRequest = when {
-            sdkInt >= 34 -> arrayOf(
-                android.Manifest.permission.READ_MEDIA_IMAGES,
-                android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-            )
-            sdkInt >= 33 -> arrayOf(
-                android.Manifest.permission.READ_MEDIA_IMAGES
-            )
-            else -> arrayOf(
-                android.Manifest.permission.READ_EXTERNAL_STORAGE
-            )
-        }
-
-        val hasAll = permissionsToRequest.all {
-            androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        }
-
-        if (hasAll) {
-            imagePickerLauncher.launch("image/*")
-        } else {
-            imagePermissionLauncher.launch(permissionsToRequest)
-        }
-    }
-
-    fun checkAndRequestFileStorage() {
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            filePickerLauncher.launch("*/*")
-        } else {
-            val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.READ_EXTERNAL_STORAGE
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (hasPermission) {
-                filePickerLauncher.launch("*/*")
-            } else {
-                filePermissionLauncher.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
         }
     }
 
@@ -2071,7 +1986,7 @@ fun AddEditNoteScreen(
                             PremiumInteractiveCard(title = "AI Voice Dictation", description = "Transcribe and clean up voice notes with Gemini AI", iconType = OmniIconType.MIC, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; checkAndRequestDictation() }
                             PremiumInteractiveCard(title = "Text color & highlight", description = "Format with tailored backgrounds & text highlights", iconType = OmniIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { wizardTextToFormat = contentValue.text.substring(contentValue.selection.min, contentValue.selection.max); showPremiumToolsDialog = false; showColorHighlightWizard = true }
                             PremiumInteractiveCard(title = "Insert table", description = "Insert customized grid spreadsheets dynamically", iconType = OmniIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
-                            PremiumInteractiveCard(title = "Attach file", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = OmniIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
+                            PremiumInteractiveCard(title = "Attach file", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = OmniIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; filePickerLauncher.launch("*/*") }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
