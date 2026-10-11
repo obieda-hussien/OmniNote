@@ -10,9 +10,14 @@ on:
   workflow_dispatch:
     inputs:
       build_release:
-        description: "Build signed release APK"
+        description: "Build a Release APK (signed when configured)"
         required: false
         default: true
+        type: boolean
+      require_signing:
+        description: "Require the configured production signing key (always required for tags)"
+        required: false
+        default: false
         type: boolean
       enable_extended_checks:
         description: "Enable additional compile checks"
@@ -36,7 +41,7 @@ env:
 jobs:
   code-quality:
     name: Code Quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -57,19 +62,17 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
 
-      - name: Cache Gradle + native build dirs
+      - name: Cache Gradle
         uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            app/.cxx
-            ~/.cmake
           key: quality-${{ runner.os }}-${{ hashFiles('settings.gradle.kts', 'build.gradle.kts', 'app/build.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             quality-${{ runner.os }}-
@@ -85,21 +88,6 @@ jobs:
             :app:lintDebug \
             --continue
 
-      - name: Optional static-analysis tasks (if present)
-        continue-on-error: true
-        run: |
-          TASKS="$(./gradlew tasks --all --no-daemon --console=plain)"
-          if echo "$TASKS" | grep -qE '^ktlintCheck( |$)'; then
-            ./gradlew --no-daemon ktlintCheck
-          else
-            echo "ktlintCheck task not found; skipping."
-          fi
-          if echo "$TASKS" | grep -qE '^detekt( |$)'; then
-            ./gradlew --no-daemon detekt
-          else
-            echo "detekt task not found; skipping."
-          fi
-
       - name: Upload quality reports
         if: always()
         continue-on-error: true
@@ -109,14 +97,12 @@ jobs:
           path: |
             **/build/reports/lint-results*.html
             **/build/reports/lint-results*.xml
-            **/build/reports/ktlint/**
-            **/build/reports/detekt/**
           if-no-files-found: ignore
           retention-days: 7
 
   test:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       checks: write
@@ -134,7 +120,7 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
@@ -181,7 +167,7 @@ jobs:
 
   security-scan:
     name: Dependency Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read
@@ -189,40 +175,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: gradle
-
-      - name: Grant gradlew permission
-        run: chmod +x gradlew
-
-      - name: Check dependencyCheckAnalyze availability
-        id: dependency-check-task
-        run: |
-          if ./gradlew tasks --all --no-daemon --console=plain | grep -qE '^dependencyCheckAnalyze( |$)'; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "dependencyCheckAnalyze task not found; skipping OWASP scan."
-          fi
-
-      - name: Run OWASP Dependency Check
-        if: steps.dependency-check-task.outputs.available == 'true'
-        continue-on-error: true
-        run: ./gradlew --no-daemon dependencyCheckAnalyze
-
-      - name: Upload OWASP report
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: dependency-check-report-${{ github.run_number }}
-          path: '**/build/reports/dependency-check-report.*'
-          if-no-files-found: ignore
-          retention-days: 14
 
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@master
@@ -243,7 +195,7 @@ jobs:
 
   android-debug:
     name: Android Debug Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ code-quality, test, security-scan ]
     timeout-minutes: 90
     permissions:
@@ -263,7 +215,7 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
@@ -298,6 +250,9 @@ jobs:
             fi
           done
 
+      - name: Verify debug APK identity and version
+        run: python3 .github/scripts/verify-apk.py app/build/outputs/apk/debug
+
       - name: Upload debug APK
         continue-on-error: true
         uses: actions/upload-artifact@v6
@@ -325,8 +280,9 @@ jobs:
 
   android-release:
     name: Android Release Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ code-quality, test, security-scan ]
+    if: github.event_name != 'workflow_dispatch' || inputs.build_release
     timeout-minutes: 90
     permissions:
       contents: write
@@ -345,7 +301,7 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
@@ -355,93 +311,101 @@ jobs:
 
       - name: Prepare signing configuration
         id: signing
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
+          REQUIRE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.require_signing) }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          READY=false
-          REASON=""
-
-          if [ -n "${KEYSTORE_BASE64}" ] && \
-             [ -n "${KEYSTORE_PASSWORD}" ] && \
-             [ -n "${KEY_ALIAS}" ] && \
-             [ -n "${KEY_PASSWORD}" ]; then
-            if echo "${KEYSTORE_BASE64}" | base64 --decode > "$RUNNER_TEMP/release.keystore" 2>/dev/null; then
-              chmod 600 "$RUNNER_TEMP/release.keystore"
-              if [ -s "$RUNNER_TEMP/release.keystore" ]; then
-                if keytool -list \
-                  -keystore "$RUNNER_TEMP/release.keystore" \
-                  -storepass:env KEYSTORE_PASSWORD >/dev/null 2>&1; then
-                  if keytool -list \
-                    -keystore "$RUNNER_TEMP/release.keystore" \
-                    -storepass:env KEYSTORE_PASSWORD \
-                    -alias "${KEY_ALIAS}" >/dev/null 2>&1; then
-                    READY=true
-                    echo "KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
-                  else
-                    REASON="Keystore loaded, but alias '${KEY_ALIAS}' does not exist."
-                  fi
-                else
-                  REASON="Decoded keystore is invalid or KEYSTORE_PASSWORD is incorrect."
-                fi
-              else
-                REASON="Decoded keystore file is empty."
-              fi
-            else
-              REASON="KEYSTORE_BASE64 secret is not valid base64 data."
+          if [ -z "$KEYSTORE_BASE64$KEYSTORE_PASSWORD$KEY_ALIAS$KEY_PASSWORD" ]; then
+            if [ "$REQUIRE_SIGNING" = "true" ]; then
+              echo "::error::Production signing was requested. Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD."
+              exit 1
             fi
-          else
-            REASON="Signing secrets are missing."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
+            echo "Release compilation will produce an unsigned APK; use Debug for installation." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
 
-          echo "ready=$READY" >> "$GITHUB_OUTPUT"
-          if [ "$READY" != "true" ]; then
-            echo "reason=$REASON" >> "$GITHUB_OUTPUT"
-            rm -f "$RUNNER_TEMP/release.keystore"
-            echo "::warning::${REASON}"
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Signing configuration is incomplete: $name is missing."
+              exit 1
+            fi
+          done
+          if ! printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore" 2>/dev/null; then
+            echo "::error::KEYSTORE_BASE64 must contain a valid base64-encoded keystore."
+            exit 1
           fi
+          chmod 600 "$RUNNER_TEMP/release.keystore"
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.keystore" \
+            -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::The keystore, store password or signing alias is invalid."
+            exit 1
+          fi
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "mode=signed" >> "$GITHUB_OUTPUT"
 
-      - name: Build signed release APK
-        if: steps.signing.outputs.ready == 'true'
+      - name: Build release APK
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=true -Dkotlin.incremental=false -Dorg.gradle.jvmargs=-Xmx4g"
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          ./gradlew --no-daemon --max-workers 1 \
-            :app:assembleRelease \
-            -Pandroid.injected.signing.store.file="${{ env.KEYSTORE_PATH }}" \
-            -Pandroid.injected.signing.store.password="${KEYSTORE_PASSWORD}" \
-            -Pandroid.injected.signing.key.alias="${KEY_ALIAS}" \
-            -Pandroid.injected.signing.key.password="${KEY_PASSWORD}"
-
-      - name: Build unsigned release APK (fallback)
-        if: steps.signing.outputs.ready != 'true'
-        env:
-          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=true -Dkotlin.incremental=false -Dorg.gradle.jvmargs=-Xmx4g"
+          STORE_PASSWORD: ${{ steps.signing.outputs.ready == 'true' && secrets.KEYSTORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ steps.signing.outputs.ready == 'true' && secrets.KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ steps.signing.outputs.ready == 'true' && secrets.KEY_PASSWORD || '' }}
         run: |
           ./gradlew --no-daemon --max-workers 1 \
             :app:assembleRelease
+
+      - name: Verify production signature
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          test -n "$APKSIGNER"
+          for apk in app/build/outputs/apk/release/*.apk; do
+            "$APKSIGNER" verify --verbose "$apk"
+          done
+
+      - name: Verify optimized release APK
+        run: |
+          python3 .github/scripts/verify-apk.py app/build/outputs/apk/release
+          test -s app/build/outputs/mapping/release/mapping.txt
+          du -h app/build/outputs/apk/release/*.apk
+
+      - name: Upload R8 mapping and shrink reports
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-R8-reports-${{ github.run_number }}
+          path: app/build/outputs/mapping/release/
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload release APK
         continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
-          name: app-release-${{ github.run_number }}
+          name: Omni-NotePlus-release-${{ steps.signing.outputs.mode || 'unsigned' }}-${{ github.run_number }}
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
 
       - name: Cleanup keystore file
-        if: always() && steps.signing.outputs.ready == 'true'
-        run: rm -f "${{ env.KEYSTORE_PATH }}"
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'release.keystore').unlink(missing_ok=True)
+          PY
 
       - name: Create GitHub Release (tag builds)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: app/build/outputs/apk/release/*.apk
@@ -453,7 +417,7 @@ jobs:
 
   pipeline-summary:
     name: Pipeline Summary
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: always()
     needs: [ code-quality, test, security-scan, android-debug, android-release ]
 

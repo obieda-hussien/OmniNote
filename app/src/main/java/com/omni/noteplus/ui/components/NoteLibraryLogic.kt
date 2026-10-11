@@ -1,0 +1,21 @@
+package com.omni.noteplus.ui.components
+
+import com.omni.noteplus.data.NoteEntity
+
+/** One filtering policy shared by the pager and its contextual actions. */
+fun libraryNotes(notes: List<NoteEntity>, tag: String?, query: String, sort: String, pinnedOnly: Boolean): List<NoteEntity> {
+    val trimmedQuery = query.trim()
+    val filtered = notes.filter { note ->
+        (!pinnedOnly || note.isPinned) &&
+            (tag == null || note.tags.splitToSequence(',').any { it.trim() == tag }) &&
+            (trimmedQuery.isEmpty() || note.title.contains(trimmedQuery, ignoreCase = true) || note.content.contains(trimmedQuery, ignoreCase = true))
+    }
+    val sorted = when (sort) {
+        "oldest" -> filtered.sortedBy { it.timestamp }
+        "a-z" -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+        "z-a" -> filtered.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.title })
+        "color" -> filtered.sortedBy { it.colorHex ?: "" }
+        else -> filtered.sortedByDescending { it.timestamp }
+    }
+    return if (sort in listOf("oldest", "a-z", "z-a")) sorted else sorted.sortedByDescending { it.isPinned }
+}

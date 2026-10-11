@@ -1,0 +1,2272 @@
+package com.omni.noteplus.ui.screens
+
+import android.content.Intent
+import com.omni.noteplus.R
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import org.json.JSONObject
+import org.json.JSONArray
+import com.omni.noteplus.ui.components.OmniIcon
+import com.omni.noteplus.ui.components.OmniIconType
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import com.omni.noteplus.ui.components.OmniSheet
+import com.omni.noteplus.ui.components.OmniConfirmDialog
+import com.omni.noteplus.ui.components.noteSurface
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.omni.noteplus.data.NoteEntity
+import com.omni.noteplus.ui.components.MarkdownDocumentPreview
+import com.omni.noteplus.ui.viewmodels.NotesViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.lazy.rememberLazyListState
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun AddEditNoteScreen(
+    noteId: Int?,
+    viewModel: NotesViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val density = LocalDensity.current
+    var editorDockHeight by remember { mutableStateOf(72.dp) }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val draft = remember(noteId, viewModel) { viewModel.editorDraft(noteId) }
+    val buffer = draft.buffer
+    val existingNote = draft.base
+    var title by draft::title
+    var content by buffer::text
+    var contentValue by buffer::value
+    var isPinned by draft::isPinned
+    var selectedColor by draft::colorHex
+    var activeTagsList by draft::tags
+    var isLocked by draft::isLocked
+    var lockPin by draft::lockPin
+    var isPreviewMode by draft::isPreview
+    val previewScroll = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
+    val snackbar = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(draft) { viewModel.loadDraft(draft) }
+    val snapshot = draft.snapshot()
+    LaunchedEffect(snapshot, draft.loaded) {
+        if (draft.dirty && !draft.closing) {
+            delay(700)
+            runCatching { viewModel.saveDraft(draft) }
+        }
+    }
+    LaunchedEffect(draft.error) {
+        draft.error?.let {
+            if (snackbar.showSnackbar(it, actionLabel = "Retry", duration = SnackbarDuration.Indefinite) == SnackbarResult.ActionPerformed) {
+                if (draft.loaded) viewModel.persistDraft(draft) else viewModel.loadDraft(draft)
+            }
+        }
+    }
+    DisposableEffect(lifecycleOwner, draft) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.persistDraft(draft)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Bottom Sheet State for Note Settings (Vibe, Tags, Analytics)
+    var showSettingsSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    LaunchedEffect(draft, draft.loaded) {
+        if (!draft.loaded || draft.sharedConsumed) return@LaunchedEffect
+        draft.sharedConsumed = true
+        if (viewModel.sharedText != null) {
+            val text = viewModel.sharedText
+            if (content.isEmpty()) {
+                content = text ?: ""
+            } else {
+                buffer.insert("\n\n$text")
+            }
+        }
+        viewModel.sharedUris.orEmpty().forEach { uri ->
+            try {
+                val attachment = importAttachment(context, uri, "Shared file")
+                buffer.insert("\n\n$attachment\n\n")
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                snackbar.showSnackbar("Could not attach this file. Please select it again.")
+            }
+        }
+        viewModel.consumeSharedContent()
+    }
+
+    var showAddTagDialog by remember { mutableStateOf(false) }
+    var newTagText by remember { mutableStateOf("") }
+
+    // State for the redesigned Premium / More formatting tools popup window
+    var showPremiumToolsDialog by remember { mutableStateOf(false) }
+
+    // Text color highlight wizard variables
+    var showColorHighlightWizard by remember { mutableStateOf(false) }
+    var wizardTextToFormat by remember { mutableStateOf("") }
+    var wizardTextColorSelected by remember { mutableStateOf<String?>(null) }
+    var wizardBgColorSelected by remember { mutableStateOf<String?>(null) }
+
+    // Media attachment pickers & launchers state
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri?.let {
+            coroutineScope.launch {
+                try {
+                    buffer.insert("\n\n${importAttachment(context, it, "Image")}\n\n")
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    snackbar.showSnackbar("Could not attach this image. Please select it again.")
+                }
+            }
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri?.let {
+            coroutineScope.launch {
+                try {
+                    buffer.insert("\n\n${importAttachment(context, it, "Attachment")}\n\n")
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    snackbar.showSnackbar("Could not attach this file. Please select it again.")
+                }
+            }
+        }
+    }
+
+    // Audio recording state
+    var showVoiceRecorderDialog by remember { mutableStateOf(false) }
+    var isRecordingAudio by remember { mutableStateOf(false) }
+    var mediaRecorder by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
+    var tempAudioFile by remember { mutableStateOf<java.io.File?>(null) }
+    var recordTimeSeconds by remember { mutableStateOf(0) }
+
+    // Table generator state
+    var showTableGeneratorDialog by remember { mutableStateOf(false) }
+    var tableColumnsCount by remember { mutableStateOf("2") }
+    var tableRowsCount by remember { mutableStateOf("3") }
+
+    // Speech Dictation state
+    var showSpeechDictationDialog by remember { mutableStateOf(false) }
+    var dictatedText by remember { mutableStateOf("") }
+    var isListeningSpeech by remember { mutableStateOf(false) }
+    var dictationStatusMessage by remember { mutableStateOf("Tap 'Listen' and start speaking...") }
+    var isAiRefining by remember { mutableStateOf(false) }
+
+    val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
+    val speechIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault().language)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        }
+    }
+
+    val recognitionListener = remember {
+        object : android.speech.RecognitionListener {
+            override fun onReadyForSpeech(params: android.os.Bundle?) {
+                isListeningSpeech = true
+                dictationStatusMessage = "Listening... Speak clearly."
+            }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                isListeningSpeech = false
+                dictationStatusMessage = "Finished speaking, processing..."
+            }
+            override fun onError(error: Int) {
+                isListeningSpeech = false
+                val message = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> "Audio recording error."
+                    SpeechRecognizer.ERROR_CLIENT -> "Client error. Make sure Google speech features are enabled."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permissions missing."
+                    SpeechRecognizer.ERROR_NETWORK -> "Network issue."
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout."
+                    SpeechRecognizer.ERROR_NO_MATCH -> "No match. Speak again."
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Service busy."
+                    SpeechRecognizer.ERROR_SERVER -> "Server error."
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Timeout. Speak again."
+                    else -> "Recognition error ($error)."
+                }
+                dictationStatusMessage = message
+            }
+            override fun onResults(results: android.os.Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    dictatedText = matches[0]
+                    dictationStatusMessage = "Finished transcription."
+                }
+            }
+            override fun onPartialResults(partialResults: android.os.Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    dictatedText = matches[0]
+                }
+            }
+            override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        speechRecognizer.setRecognitionListener(recognitionListener)
+        onDispose {
+            speechRecognizer.destroy()
+            runCatching { mediaRecorder?.stop() }
+            mediaRecorder?.release()
+            mediaRecorder = null
+        }
+    }
+
+    val dictationAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            showSpeechDictationDialog = true
+        } else {
+            android.widget.Toast.makeText(context, "Microphone permission is required for Voice Dictation", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun checkAndRequestDictation() {
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            showSpeechDictationDialog = true
+        } else {
+            dictationAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun localRefineText(text: String): String {
+        var refined = text.trim()
+        if (refined.isEmpty()) return ""
+
+        // Replace spoken punctuation words in both Arabic and English
+        val replacements = mapOf(
+            "نقطة" to ".",
+            "فاصلة" to "،",
+            "علامة استفهام" to "؟",
+            "سطر جديد" to "\n",
+            "فقرة جديدة" to "\n\n",
+            "period" to ".",
+            "comma" to ",",
+            "question mark" to "?",
+            "new line" to "\n",
+            "next line" to "\n"
+        )
+
+        for ((key, value) in replacements) {
+            refined = refined.replace(Regex("(?i)\\b$key\\b"), value)
+        }
+
+        // Capitalize English sentences
+        refined = refined.split(Regex("(?<=[.!?\\n])\\s+"))
+            .map { sentence ->
+                sentence.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            }
+            .joinToString(" ")
+
+        // Clean up spacing
+        refined = refined
+            .replace(Regex(" +"), " ")
+            .replace(" .", ".")
+            .replace(" ,", ",")
+            .replace(" ?", "?")
+            .replace(" ،", "،")
+            .replace(" ؟", "؟")
+            .replace("\n ", "\n")
+            .replace(" \n", "\n")
+
+        return refined.trim()
+    }
+
+    suspend fun refineTextWithAI(prompt: String): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val apiKey = com.omni.noteplus.BuildConfig.GEMINI_API_KEY
+        if (apiKey.isBlank() || apiKey == "YOUR_API_KEY_HERE" || apiKey.startsWith("YOUR_")) {
+            return@withContext "Error: " + context.getString(R.string.ai_refinement_unavailable)
+        }
+
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+
+        val contentObj = JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
+        val requestBodyJson = JSONObject()
+            .put("contents", JSONArray().put(contentObj))
+            .toString()
+
+        val request = okhttp3.Request.Builder()
+            .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey")
+            .post(requestBodyJson.toRequestBody(mediaType))
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext "Error: API call failed (${response.code})"
+                val responseBody = response.body?.string() ?: return@withContext "Error: Empty response"
+
+                val jsonResponse = JSONObject(responseBody)
+                val candidates = jsonResponse.getJSONArray("candidates")
+                val firstCandidate = candidates.getJSONObject(0)
+                val content = firstCandidate.getJSONObject("content")
+                val parts = content.getJSONArray("parts")
+                val firstPart = parts.getJSONObject(0)
+                firstPart.getString("text")
+            }
+        } catch (e: Exception) {
+            "Error: ${e.localizedMessage ?: e.message}"
+        }
+    }
+
+    // Modern Multi-version Permission Launchers and Check Functions
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            showVoiceRecorderDialog = true
+        } else {
+            android.widget.Toast.makeText(context, "Microphone permission is required to record audio voice notes", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val imagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissionsMap ->
+        val allGranted = permissionsMap.values.all { it }
+        val partialGranted = permissionsMap[android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true
+        val imageGranted = permissionsMap[android.Manifest.permission.READ_MEDIA_IMAGES] == true || permissionsMap[android.Manifest.permission.READ_EXTERNAL_STORAGE] == true
+
+        if (allGranted || partialGranted || imageGranted) {
+            imagePickerLauncher.launch("image/*")
+        } else {
+            android.widget.Toast.makeText(context, "Storage/Media permission is required to select images", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val filePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            filePickerLauncher.launch("*/*")
+        } else {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                filePickerLauncher.launch("*/*")
+            } else {
+                android.widget.Toast.makeText(context, "Storage permission is required to attach files", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun checkAndRequestRecordAudio() {
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            showVoiceRecorderDialog = true
+        } else {
+            recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun checkAndRequestImageStorage() {
+        val sdkInt = android.os.Build.VERSION.SDK_INT
+        val permissionsToRequest = when {
+            sdkInt >= 34 -> arrayOf(
+                android.Manifest.permission.READ_MEDIA_IMAGES,
+                android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+            sdkInt >= 33 -> arrayOf(
+                android.Manifest.permission.READ_MEDIA_IMAGES
+            )
+            else -> arrayOf(
+                android.Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+        }
+
+        val hasAll = permissionsToRequest.all {
+            androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+
+        if (hasAll) {
+            imagePickerLauncher.launch("image/*")
+        } else {
+            imagePermissionLauncher.launch(permissionsToRequest)
+        }
+    }
+
+    fun checkAndRequestFileStorage() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            filePickerLauncher.launch("*/*")
+        } else {
+            val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (hasPermission) {
+                filePickerLauncher.launch("*/*")
+            } else {
+                filePermissionLauncher.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+    }
+
+    val colorOptions = listOf(
+        null, // Default
+        "#E6E3FF", // Electric Indigo Light
+        "#2D26A0", // Electric Indigo Dark
+        "#FFF0CC", // Warm Amber Light
+        "#9A5500", // Warm Amber Dark
+        "#FFD6EC", // Dusty Rose Light
+        "#8B2060"  // Dusty Rose Dark
+    )
+
+    val animatedBackgroundColor by animateColorAsState(
+        targetValue = noteSurface(selectedColor, editor = true),
+        animationSpec = tween(180), label = "EditorColor"
+    )
+
+    val saveAndGoBack: () -> Unit = {
+        if (!draft.closing) {
+            draft.closing = true
+            focusManager.clearFocus()
+            coroutineScope.launch {
+                try {
+                    viewModel.saveDraft(draft)
+                    viewModel.closeDraft(draft)
+                    onNavigateBack()
+                } catch (e: Exception) { draft.closing = false }
+            }
+        }
+    }
+
+    // Capture hardware back behavior gracefully
+    BackHandler {
+        saveAndGoBack()
+    }
+
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbar) },
+        containerColor = animatedBackgroundColor,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            TopAppBar(
+                modifier = Modifier.statusBarsPadding(),
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column {
+                            Text(if (noteId != null) "Edit note" else "New note", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                when {
+                                    !draft.loaded -> "Opening note…"
+                                    draft.error != null -> "Save needs attention"
+                                    draft.saving -> "Saving…"
+                                    draft.dirty -> "Unsaved changes"
+                                    draft.base != null -> "Saved"
+                                    else -> "Markdown supported"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (draft.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = { saveAndGoBack() },
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        OmniIcon(OmniIconType.BACK, modifier = Modifier.semantics { contentDescription = "Save and go back" })
+                    }
+                },
+                actions = {
+                    TextButton(
+                        onClick = { focusManager.clearFocus(); isPreviewMode = !isPreviewMode },
+                        enabled = draft.loaded && !draft.closing
+                    ) {
+                        OmniIcon(if (isPreviewMode) OmniIconType.EDIT else OmniIconType.VISIBILITY,
+                            tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (isPreviewMode) "Edit" else "Preview")
+                    }
+
+                    // Open Design & Tags tuning Sheet
+                    IconButton(
+                        onClick = { showSettingsSheet = true },
+                        enabled = draft.loaded && !draft.closing,
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        OmniIcon(OmniIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.semantics { contentDescription = "Note options" })
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
+            )
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .navigationBarsPadding()
+                .imePadding()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (!draft.loaded) {
+                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        if (draft.error == null) CircularProgressIndicator()
+                        else {
+                            Text(draft.error!!, modifier = Modifier.padding(24.dp))
+                            TextButton(onClick = { coroutineScope.launch { draft.error = null; viewModel.loadDraft(draft) } }) { Text("Retry") }
+                        }
+                    }
+                } else AnimatedContent(
+                    targetState = isPreviewMode,
+                    label = "EditorPreviewTransition",
+                    transitionSpec = {
+                        (slideInHorizontally(
+                            initialOffsetX = { fullWidth -> if (targetState) fullWidth / 8 else -fullWidth / 8 },
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(220))).togetherWith(
+                            slideOutHorizontally(
+                                targetOffsetX = { fullWidth -> if (targetState) -fullWidth / 8 else fullWidth / 8 },
+                                animationSpec = tween(220, easing = FastOutSlowInEasing)
+                            ) + fadeOut(tween(220))
+                        )
+                    },
+                    modifier = Modifier.fillMaxSize()
+                ) { isPreview ->
+                    if (!isPreview) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            val view = LocalView.current
+                            val customTextToolbar = remember(view, buffer) {
+                                com.omni.noteplus.ui.components.CustomTextToolbar(view) { prefix, suffix -> buffer.wrap(prefix, suffix) }
+                            }
+                            CompositionLocalProvider(LocalTextToolbar provides customTextToolbar) {
+                            // 1. Distraction-free Writing Area
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = editorDockHeight + 16.dp)
+                            ) {
+                                TextField(
+                                    value = title,
+                                    onValueChange = { title = it },
+                                    placeholder = {
+                                        Text(
+                                            "Title",
+                                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, textDirection = TextDirection.ContentOrLtr),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                                        )
+                                    },
+                                    textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, textDirection = TextDirection.ContentOrLtr),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        disabledContainerColor = Color.Transparent,
+                                        errorContainerColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                                )
+
+                                TextField(
+                                    value = contentValue,
+                                    onValueChange = { contentValue = it },
+                                    placeholder = {
+                                        Text(
+                                            "Start writing…",
+                                            style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                        )
+                                    },
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp, textDirection = TextDirection.ContentOrLtr),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        disabledContainerColor = Color.Transparent,
+                                        errorContainerColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f)
+                                        .padding(horizontal = 8.dp)
+                                )
+                            }
+                            }
+
+                            // 2. High-accessibility Keyboard Format Accessory Dock (Floating)
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 8.dp, start = 12.dp, end = 12.dp)
+                            ) {
+                                Surface(
+                                    tonalElevation = 0.dp,
+                                    shadowElevation = 4.dp,
+                                    color = MaterialTheme.colorScheme.surface,
+                                    shape = RoundedCornerShape(24.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onSizeChanged { size -> editorDockHeight = with(density) { size.height.toDp() } }
+                                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp, bottom = 8.dp)
+                                    ) {
+                                        // Active tags quick indicators row
+                                        if (activeTagsList.isNotEmpty()) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState())
+                                                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                activeTagsList.forEach { tag ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            OmniIcon(
+                                                                type = OmniIconType.LABEL,
+                                                                tint = MaterialTheme.colorScheme.primary,
+                                                                modifier = Modifier.size(12.dp)
+                                                            )
+                                                            Text(
+                                                                text = tag,
+                                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                                color = MaterialTheme.colorScheme.primary
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            ToolbarIconButton(OmniIconType.UNDO, "Undo", enabled = buffer.canUndo, onClick = { buffer.undo() })
+                                            ToolbarIconButton(OmniIconType.REDO, "Redo", enabled = buffer.canRedo, onClick = { buffer.redo() })
+                                            ToolbarIconButton(OmniIconType.FORMAT_BOLD, "Bold text", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.wrap("**") })
+                                            ToolbarIconButton(OmniIconType.BULLET_LIST, "Bullet list", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.prefixLines("- ") })
+                                            ToolbarIconButton(OmniIconType.CHECKBOX_ON, "Checklist", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.prefixLines("- [ ] ") })
+                                            ToolbarIconButton(OmniIconType.PLUS, "More formatting and attachments", tint = MaterialTheme.colorScheme.primary, onClick = { showPremiumToolsDialog = true })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                    // Preview Mode Visual Port
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        MarkdownDocumentPreview(
+                            title = title,
+                            rawText = content,
+                            listState = previewScroll,
+                            onCheckedChange = buffer::setChecked
+                        )
+
+                    }
+                } // End of if(!isPreview) else {..}
+            } // End of AnimatedContent Content Block
+        } // End of Column (modifier = fillMaxSize)
+    } // End of Box (padding)
+
+    // Modern Note Customization Slider & Bottom Sheet
+        if (showSettingsSheet) {
+            OmniSheet(
+                onDismissRequest = { showSettingsSheet = false },
+                sheetState = sheetState,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    // Header Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                OmniIcon(OmniIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            }
+                            Text(
+                                text = "Note options",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = { showSettingsSheet = false },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                        ) {
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    // Quick Actions Row (Pin, Delete)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp)
+                                .clickable { isPinned = !isPinned },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = if (isPinned) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                OmniIcon(
+                                    type = if (isPinned) OmniIconType.PIN else OmniIconType.UNPIN,
+                                    tint = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (isPinned) "Pinned" else "Pin Note",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (existingNote != null) {
+                            Card(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp)
+                                    .clickable {
+                                        if (!draft.closing) {
+                                            draft.closing = true
+                                            coroutineScope.launch {
+                                                try {
+                                                    viewModel.trashDraft(draft)
+                                                    viewModel.closeDraft(draft)
+                                                    onNavigateBack()
+                                                } catch (e: Exception) {
+                                                    draft.closing = false
+                                                    draft.error = "Couldn't move this note to trash. Try again."
+                                                }
+                                            }
+                                        }
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    OmniIcon(OmniIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Delete",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 1. Vibe Theme selection card
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "VIBE THEME ACCENT",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                colorOptions.forEach { colorHex ->
+                                    val color = colorHex?.let { Color(android.graphics.Color.parseColor(it)) }
+                                        ?: MaterialTheme.colorScheme.surfaceVariant
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(CircleShape)
+                                            .background(color)
+                                            .border(
+                                                width = if (selectedColor == colorHex) 2.5.dp else 1.dp,
+                                                color = if (selectedColor == colorHex) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
+                                                shape = CircleShape
+                                            )
+                                            .clickable { selectedColor = colorHex },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (selectedColor == colorHex) {
+                                            OmniIcon(
+                                                type = OmniIconType.TICK,
+                                                tint = if (colorHex == "#E6E3FF" || colorHex == "#FFF0CC" || colorHex == "#FFD6EC" || colorHex == null) MaterialTheme.colorScheme.primary else Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Advanced Privacy & Lock Card
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "PRIVACY & LOCK",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        "Lock this note",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        "Requires PIN to open",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isLocked,
+                                    onCheckedChange = { isLocked = it }
+                                )
+                            }
+                            if (isLocked) {
+                                OutlinedTextField(
+                                    value = lockPin ?: "",
+                                    onValueChange = { lockPin = it.take(4) },
+                                    placeholder = { Text("Set 4-digit PIN") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. Advanced Custom Export Card
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "ADVANCED EXPORT",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Button(
+                                    onClick = {
+                                        try {
+                                            val safeTitle = if (title.isBlank()) "note" else title.replace(Regex("[^a-zA-Z0-9.-]"), "_")
+                                            val file = java.io.File(context.cacheDir, "$safeTitle.txt")
+                                            file.writeText("$title\n\n$content")
+                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                            val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Export as TXT")
+                                            context.startActivity(shareIntent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            android.widget.Toast.makeText(context, "Export failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    OmniIcon(OmniIconType.ATTACH_FILE, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Export TXT", fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = {
+                                        try {
+                                            val safeTitle = if (title.isBlank()) "note" else title.replace(Regex("[^a-zA-Z0-9.-]"), "_")
+                                            val file = java.io.File(context.cacheDir, "$safeTitle.md")
+                                            file.writeText("# $title\n\n$content\n\n> Exported from Omni Note+")
+                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                            val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                type = "text/markdown"
+                                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Export as Markdown")
+                                            context.startActivity(shareIntent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            android.widget.Toast.makeText(context, "Export failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    OmniIcon(OmniIconType.CODE, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Export MD", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. Categories & Tags Card
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "CATEGORIES & TAGS",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                IconButton(
+                                    onClick = { showAddTagDialog = true },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                                ) {
+                                    OmniIcon(
+                                        type = OmniIconType.ADD,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            val predefinedTags = listOf("Work", "Personal", "Ideas", "Urgent", "Study", "To-Do")
+                            val allAvailableTags = (predefinedTags + activeTagsList).distinct()
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                allAvailableTags.forEach { tag ->
+                                    val isSelected = activeTagsList.contains(tag)
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = {
+                                            activeTagsList = if (isSelected) {
+                                                activeTagsList - tag
+                                            } else {
+                                                activeTagsList + tag
+                                            }
+                                        },
+                                        label = { Text(tag, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
+                                        leadingIcon = if (isSelected) {
+                                            { OmniIcon(OmniIconType.TICK, modifier = Modifier.size(12.dp)) }
+                                        } else {
+                                            { OmniIcon(OmniIconType.LABEL, modifier = Modifier.size(12.dp)) }
+                                        },
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 5. Note Science & Analytics Card
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "NOTE SCIENCE & ANALYTICS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+
+                        val charCount = content.length
+                        val wordCount = remember(content) { content.split(Regex("\\s+")).filter { it.isNotBlank() }.size }
+                        val readTimeMinutes = maxOf(1, (wordCount / 200).toInt())
+                        val containsArabic = content.contains(Regex("[\\u0600-\\u06FF]"))
+                        val containsEnglish = content.contains(Regex("[a-zA-Z]"))
+
+                        val textLanguage = when {
+                            containsArabic && containsEnglish -> "Bilingual (AR/EN)"
+                            containsArabic -> "Arabic"
+                            containsEnglish -> "English"
+                            else -> "Plain Text"
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                AnalyticsRow(label = "Total Characters", value = "$charCount")
+                                Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                                AnalyticsRow(label = "Total Words", value = "$wordCount")
+                                Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                                AnalyticsRow(label = "Estimated Read Time", value = "~$readTimeMinutes min")
+                                Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                                AnalyticsRow(label = "Language Detected", value = textLanguage)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
+            }
+        }
+
+        // Custom Tag Creation dialog
+        if (showAddTagDialog) {
+            OmniSheet(
+                onDismissRequest = {
+                    showAddTagDialog = false
+                    newTagText = ""
+                },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        OmniIcon(OmniIconType.LABEL, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                    }
+                    Text(
+                        text = "Create Custom Tag",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Add a new category label to organize your notes.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    OutlinedTextField(
+                        value = newTagText,
+                        onValueChange = { newTagText = it },
+                        label = { Text("Tag Name") },
+                        placeholder = { Text("e.g. Work, Ideas, Study") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        )
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showAddTagDialog = false; newTagText = "" },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Cancel")
+                        }
+                        Button(
+                            onClick = {
+                                val entered = newTagText.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                                activeTagsList = (activeTagsList + entered).distinct()
+                                showAddTagDialog = false
+                                newTagText = ""
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Create")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Visual text formatting color picker wizard dialog
+        if (showColorHighlightWizard) {
+            OmniSheet(
+                onDismissRequest = {
+                    showColorHighlightWizard = false
+                    wizardTextToFormat = ""
+                },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OmniIcon(OmniIconType.PALETTE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        Text("Color Highlight Studio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedTextField(
+                        value = wizardTextToFormat,
+                        onValueChange = { wizardTextToFormat = it },
+                        label = { Text("Text to Style") },
+                        placeholder = { Text("e.g. Important highlight, keyword...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Text("TEXT COLOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    val textColors = listOf("#2D26A0" to "Indigo Dark", "#9A5500" to "Orange Dark", "#8B2060" to "Rose Dark", "#1B5E20" to "Green Dark", "#1A237E" to "Blue Dark", "#B71C1C" to "Red Dark", "#4A148C" to "Violet Dark")
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        textColors.forEach { (hexCode, _) ->
+                            val rgb = Color(android.graphics.Color.parseColor(hexCode))
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(rgb)
+                                    .border(
+                                        width = if (wizardTextColorSelected == hexCode) 2.5.dp else 1.dp,
+                                        color = if (wizardTextColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { wizardTextColorSelected = if (wizardTextColorSelected == hexCode) null else hexCode },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (wizardTextColorSelected == hexCode) {
+                                    OmniIcon(
+                                        type = OmniIconType.TICK,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Text("BACKGROUND ACCENT COLOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    val bgColors = listOf("#E6E3FF" to "Indigo", "#FFF0CC" to "Orange", "#FFD6EC" to "Rose", "#E8F5E9" to "Green", "#E8EAF6" to "Blue", "#FFEBEE" to "Red", "#F3E5F5" to "Violet")
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        bgColors.forEach { (hexCode, _) ->
+                            val rgb = Color(android.graphics.Color.parseColor(hexCode))
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(rgb)
+                                    .border(
+                                        width = if (wizardBgColorSelected == hexCode) 2.5.dp else 1.dp,
+                                        color = if (wizardBgColorSelected == hexCode) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.3f),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { wizardBgColorSelected = if (wizardBgColorSelected == hexCode) null else hexCode },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (wizardBgColorSelected == hexCode) {
+                                    OmniIcon(
+                                        type = OmniIconType.TICK,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showColorHighlightWizard = false; wizardTextToFormat = "" },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Cancel")
+                        }
+                        Button(
+                            onClick = {
+                                val insertTxt = wizardTextToFormat.ifBlank { "styled text" }
+                                var markdownToken = insertTxt
+                                if (wizardTextColorSelected != null) { markdownToken = "[color:${wizardTextColorSelected}]($markdownToken)" }
+                                if (wizardBgColorSelected != null) { markdownToken = "[bg:${wizardBgColorSelected}]($markdownToken)" }
+                                buffer.insert(markdownToken)
+                                showColorHighlightWizard = false; wizardTextToFormat = ""
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1.2f)
+                        ) {
+                            Text("Apply Format", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Built-in Dynamic Audio Voice Recorder dialog with Animated Waveform Canvas
+        if (showVoiceRecorderDialog) {
+            // Amplitude variables used to animate dynamic waveform bars on Canvas!
+            val amplitudes = remember { mutableStateListOf(15f, 10f, 25f, 12f, 40f, 18f, 30f, 8f, 20f, 14f) }
+
+            OmniSheet(
+                onDismissRequest = {
+                    if (isRecordingAudio) {
+                        try { mediaRecorder?.stop() } catch (e: Exception) {}
+                        mediaRecorder?.release()
+                        mediaRecorder = null
+                        isRecordingAudio = false
+                    }
+                    showVoiceRecorderDialog = false
+                },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    // Header Bar with close button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                OmniIcon(
+                                    type = OmniIconType.MIC,
+                                    tint = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Text(
+                                text = "Voice Note Studio",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                if (isRecordingAudio) {
+                                    try { mediaRecorder?.stop() } catch (e: Exception) {}
+                                    mediaRecorder?.release()
+                                    mediaRecorder = null
+                                    isRecordingAudio = false
+                                }
+                                showVoiceRecorderDialog = false
+                                recordTimeSeconds = 0
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                        ) {
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    Text(
+                        text = if (isRecordingAudio) "Recording active... Speak now" else "Tap red button below to record voice",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        color = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // ─── STUNNING REAL-TIME CANVAS WAVEFORM ANMATION ───
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isRecordingAudio) {
+                            LaunchedEffect(Unit) {
+                                while (isRecordingAudio) {
+                                    delay(80)
+                                    for (i in amplitudes.indices) { amplitudes[i] = (15..70).random().toFloat() }
+                                }
+                            }
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val barWidth = 8.dp.toPx()
+                                val barSpacing = 6.dp.toPx()
+                                val startX = (size.width - (amplitudes.size * (barWidth + barSpacing) - barSpacing)) / 2
+
+                                for (i in amplitudes.indices) {
+                                    val height = amplitudes[i].dp.toPx()
+                                    val x = startX + i * (barWidth + barSpacing)
+                                    val y = (size.height - height) / 2
+                                    drawRoundRect(
+                                        color = Color(0xFFD81B60),
+                                        topLeft = Offset(x, y),
+                                        size = Size(barWidth, height),
+                                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                                    )
+                                }
+                            }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                repeat(10) {
+                                    Box(modifier = Modifier.width(8.dp).height(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)))
+                                }
+                            }
+                        }
+                    }
+
+                    val formattedTime = remember(recordTimeSeconds) {
+                        val secs = recordTimeSeconds % 60
+                        val mins = recordTimeSeconds / 60
+                        String.format("%02d:%02d", mins, secs)
+                    }
+                    Text(
+                        text = formattedTime,
+                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
+                        color = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.sp
+                    )
+
+                    if (isRecordingAudio) {
+                        LaunchedEffect(Unit) {
+                            while (isRecordingAudio) {
+                                delay(1000)
+                                recordTimeSeconds++
+                            }
+                        }
+                    }
+
+                    // Center trigger recording button with nice pulse background styling
+                    IconButton(
+                        onClick = {
+                            if (isRecordingAudio) {
+                                try {
+                                    mediaRecorder?.stop()
+                                    mediaRecorder?.release()
+                                    mediaRecorder = null
+                                    isRecordingAudio = false
+                                    tempAudioFile?.let {
+                                        buffer.insert("\n\n[voice:Voice Recording ${System.currentTimeMillis() % 1000}](${android.net.Uri.fromFile(it)})\n\n")
+                                    }
+                                    showVoiceRecorderDialog = false
+                                    recordTimeSeconds = 0
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Error saving recording: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                try {
+                                    val cacheDir = context.cacheDir
+                                    val file = java.io.File(cacheDir, "omni_voice_${System.currentTimeMillis()}.mp4")
+                                    tempAudioFile = file
+                                    recordTimeSeconds = 0
+                                    val recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                        android.media.MediaRecorder(context)
+                                    } else { android.media.MediaRecorder() }
+                                    recorder.apply {
+                                        setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+                                        setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+                                        setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+                                        setOutputFile(file.absolutePath)
+                                        prepare()
+                                        start()
+                                    }
+                                    mediaRecorder = recorder
+                                    isRecordingAudio = true
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    android.widget.Toast.makeText(context, "Mic access required: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .size(96.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isRecordingAudio) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
+                                else MaterialTheme.colorScheme.primaryContainer
+                            )
+                            .border(width = 2.dp, color = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, shape = CircleShape)
+                    ) {
+                        OmniIcon(
+                            type = if (isRecordingAudio) OmniIconType.STOP else OmniIconType.RECORD,
+                            tint = if (isRecordingAudio) MaterialTheme.colorScheme.onErrorContainer else Color.Red,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (isRecordingAudio) {
+                                try { mediaRecorder?.stop() } catch (e: Exception) {}
+                                mediaRecorder?.release()
+                                mediaRecorder = null
+                                isRecordingAudio = false
+                            }
+                            showVoiceRecorderDialog = false
+                            recordTimeSeconds = 0
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(0.6f)
+                    ) {
+                        Text("Dismiss")
+                    }
+                }
+            }
+        }
+
+        // AI Speech Dictation dialog
+        if (showSpeechDictationDialog) {
+            OmniSheet(
+                onDismissRequest = {
+                    if (isListeningSpeech) {
+                        try { speechRecognizer.stopListening() } catch (e: Exception) {}
+                        isListeningSpeech = false
+                    }
+                    showSpeechDictationDialog = false
+                },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    // Header with close button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                OmniIcon(
+                                    type = OmniIconType.MIC,
+                                    tint = if (isListeningSpeech) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Text(
+                                "AI Voice Dictation",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                if (isListeningSpeech) {
+                                    try { speechRecognizer.stopListening() } catch (e: Exception) {}
+                                    isListeningSpeech = false
+                                }
+                                showSpeechDictationDialog = false
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                        ) {
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    // Status Indicator Box
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f), RoundedCornerShape(12.dp)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isListeningSpeech) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isListeningSpeech) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                OmniIcon(OmniIconType.INFO, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                            }
+                            Text(
+                                text = dictationStatusMessage,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isListeningSpeech) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // Transcribed Text Display Area
+                    OutlinedTextField(
+                        value = dictatedText,
+                        onValueChange = { dictatedText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp),
+                        label = { Text("Transcribed Content") },
+                        placeholder = { Text("Spoken words will appear here in real-time...") },
+                        shape = RoundedCornerShape(16.dp),
+                        textStyle = MaterialTheme.typography.bodyLarge,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        )
+                    )
+
+                    // Control Buttons (Mic Start/Stop)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Toggle Listening button
+                        Button(
+                            onClick = {
+                                if (isListeningSpeech) {
+                                    try { speechRecognizer.stopListening() } catch (e: Exception) {}
+                                    isListeningSpeech = false
+                                    dictationStatusMessage = "Listening stopped."
+                                } else {
+                                    try {
+                                        speechRecognizer.startListening(speechIntent)
+                                        isListeningSpeech = true
+                                        dictationStatusMessage = "Initializing Speech Recognizer..."
+                                    } catch (e: Exception) {
+                                        dictationStatusMessage = "Failed to start listening: ${e.localizedMessage}"
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isListeningSpeech) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            OmniIcon(
+                                type = if (isListeningSpeech) OmniIconType.STOP else OmniIconType.MIC,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isListeningSpeech) "Stop" else "Listen", fontWeight = FontWeight.Bold)
+                        }
+
+                        // AI Refine formatting button
+                        Button(
+                            onClick = {
+                                if (dictatedText.isBlank()) {
+                                    android.widget.Toast.makeText(context, "Transcribe some text first!", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    coroutineScope.launch {
+                                        isAiRefining = true
+                                        val apiKey = com.omni.noteplus.BuildConfig.GEMINI_API_KEY
+                                        if (apiKey.isBlank() || apiKey == "YOUR_API_KEY_HERE" || apiKey.startsWith("YOUR_")) {
+                                            dictationStatusMessage = "Applying Smart Local formatting (offline)..."
+                                            delay(500)
+                                            dictatedText = localRefineText(dictatedText)
+                                            dictationStatusMessage = "Formatted offline successfully!"
+                                        } else {
+                                            dictationStatusMessage = "Refining text using Gemini AI..."
+                                            val prompt = "Correct any transcription mistakes, speech hesitations, grammatical errors, and format the following spoken text professionally with proper punctuation. Return ONLY the refined, clean text, and do not add any conversational framing: \"$dictatedText\""
+                                            val refined = refineTextWithAI(prompt)
+                                            if (refined.startsWith("Error:")) {
+                                                dictatedText = localRefineText(dictatedText)
+                                                dictationStatusMessage = "Formatted offline (Gemini API unavailable)"
+                                            } else {
+                                                dictatedText = refined
+                                                dictationStatusMessage = "Refined by AI successfully!"
+                                            }
+                                        }
+                                        isAiRefining = false
+                                    }
+                                }
+                            },
+                            enabled = !isAiRefining && dictatedText.isNotBlank(),
+                            modifier = Modifier.weight(1.2f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.tertiary,
+                                contentColor = MaterialTheme.colorScheme.onTertiary
+                            )
+                        ) {
+                            if (isAiRefining) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = MaterialTheme.colorScheme.onTertiary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                OmniIcon(
+                                    type = OmniIconType.WAND,
+                                    tint = MaterialTheme.colorScheme.onTertiary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Smart Format", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Action buttons (Apply/Insert and Clear)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                dictatedText = ""
+                                dictationStatusMessage = "Transcription cleared."
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+                        ) {
+                            Text("Clear", fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (dictatedText.isNotBlank()) {
+                                    buffer.insert(dictatedText)
+                                }
+                                showSpeechDictationDialog = false
+                            },
+                            enabled = dictatedText.isNotBlank(),
+                            modifier = Modifier.weight(1.2f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Insert Text", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Interactive Table generator dialog
+        if (showTableGeneratorDialog) {
+            OmniSheet(
+                onDismissRequest = { showTableGeneratorDialog = false },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    // Header Bar with close
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                OmniIcon(OmniIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                            }
+                            Text(
+                                "Table Generator",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = { showTableGeneratorDialog = false },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                        ) {
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    Text("Specify table rows and columns to generate clean Markdown table tags.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    OutlinedTextField(
+                        value = tableColumnsCount,
+                        onValueChange = { tableColumnsCount = it },
+                        label = { Text("Number of Columns") },
+                        placeholder = { Text("e.g. 3") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = tableRowsCount,
+                        onValueChange = { tableRowsCount = it },
+                        label = { Text("Number of Rows") },
+                        placeholder = { Text("e.g. 4") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showTableGeneratorDialog = false },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Cancel")
+                        }
+                        Button(
+                            onClick = {
+                                val cols = (tableColumnsCount.toIntOrNull() ?: 2).coerceIn(1, 12)
+                                val rows = (tableRowsCount.toIntOrNull() ?: 3).coerceIn(1, 100)
+                                val sb = java.lang.StringBuilder()
+                                sb.append("\n\n|")
+                                for (c in 1..cols) { sb.append(" Header $c |") }
+                                sb.append("\n|")
+                                for (c in 1..cols) { sb.append("---|") }
+                                sb.append("\n")
+                                for (r in 1..rows) {
+                                    sb.append("|")
+                                    for (c in 1..cols) { sb.append(" Cell $r,$c |") }
+                                    sb.append("\n")
+                                }
+                                sb.append("\n")
+                                buffer.insert(sb.toString())
+                                showTableGeneratorDialog = false
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1.2f)
+                        ) {
+                            Text("Insert Table", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Custom Premium styling Studio overlay dialog
+        if (showPremiumToolsDialog) {
+            OmniSheet(
+                onDismissRequest = { showPremiumToolsDialog = false },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OmniIcon(
+                            type = OmniIconType.WAND,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Writing tools", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Format text and add content", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+                        }
+                    }
+                    Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+
+                    ) {
+                        Text("Formatting", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            PremiumToolChip(label = "Heading 1", iconType = OmniIconType.HEADING_1) { buffer.prefixLines("# "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Heading 2", iconType = OmniIconType.HEADING_2) { buffer.prefixLines("## "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Italics", iconType = OmniIconType.FORMAT_ITALIC) { buffer.wrap("*"); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Marker", iconType = OmniIconType.HIGHLIGHT) { buffer.wrap("=="); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Quote block", iconType = OmniIconType.QUOTE) { buffer.prefixLines("> "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Code Block", iconType = OmniIconType.CODE) { buffer.wrap("\n```\n", "\n```\n"); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Bullet List", iconType = OmniIconType.BULLET_LIST) { buffer.prefixLines("- "); showPremiumToolsDialog = false }
+                        }
+
+                        Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+
+                        Text("Insert & create", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            PremiumInteractiveCard(title = "AI Voice Dictation", description = "Transcribe and clean up voice notes with Gemini AI", iconType = OmniIconType.MIC, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; checkAndRequestDictation() }
+                            PremiumInteractiveCard(title = "Text color & highlight", description = "Format with tailored backgrounds & text highlights", iconType = OmniIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { wizardTextToFormat = contentValue.text.substring(contentValue.selection.min, contentValue.selection.max); showPremiumToolsDialog = false; showColorHighlightWizard = true }
+                            PremiumInteractiveCard(title = "Insert table", description = "Insert customized grid spreadsheets dynamically", iconType = OmniIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
+                            PremiumInteractiveCard(title = "Attach file", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = OmniIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ToolbarIconButton(
+    iconType: OmniIconType,
+    contentDescription: String,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    containerColor: Color = Color.Transparent,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(containerColor)
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        OmniIcon(
+            type = iconType,
+            tint = if (enabled) tint else tint.copy(alpha = 0.3f),
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+@Composable
+fun AnalyticsRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PremiumToolChip(
+    label: String,
+    iconType: OmniIconType,
+    onClick: () -> Unit
+) {
+    InputChip(
+        selected = false,
+        onClick = onClick,
+        label = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+            )
+        },
+        leadingIcon = {
+            OmniIcon(
+                type = iconType,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        colors = InputChipDefaults.inputChipColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+            labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ),
+        border = InputChipDefaults.inputChipBorder(
+            selected = false,
+            enabled = true,
+            borderColor = Color.Transparent
+        ),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.padding(horizontal = 2.dp)
+    )
+}
+
+@Composable
+fun PremiumInteractiveCard(
+    title: String,
+    description: String,
+    iconType: OmniIconType,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(tint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                OmniIcon(
+                    type = iconType,
+                    tint = tint,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+            }
+
+            OmniIcon(
+                type = OmniIconType.ARROW_RIGHT,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+private suspend fun importAttachment(context: android.content.Context, uri: android.net.Uri, fallback: String): String =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val name = attachmentName(context, uri, fallback)
+        val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+        val internal = copyUriToInternalStorage(context, uri, name)
+        com.omni.noteplus.ui.components.attachmentMarkdown(internal.toString(), name, mime)
+    }
+
+private fun attachmentName(context: android.content.Context, uri: android.net.Uri, fallback: String): String =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0)?.takeIf { it.isNotBlank() } else null
+        }
+    }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: fallback
+
+suspend fun copyUriToInternalStorage(context: android.content.Context, uri: android.net.Uri, defaultName: String): android.net.Uri =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val name = attachmentName(context, uri, defaultName)
+            .replace(Regex("[\\\\/\\p{Cntrl}]"), "_").take(120).ifBlank { "Attachment" }
+        val file = java.io.File(context.filesDir, "${java.util.UUID.randomUUID()}_$name")
+        try {
+            val input = context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Attachment unavailable")
+            input.use { source -> file.outputStream().use { output ->
+                val bytes = ByteArray(64 * 1024)
+                while (true) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    val count = source.read(bytes)
+                    if (count < 0) break
+                    output.write(bytes, 0, count)
+                }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            } }
+            android.net.Uri.fromFile(file)
+        } catch (error: Exception) {
+            file.delete()
+            throw error
+        }
+    }
