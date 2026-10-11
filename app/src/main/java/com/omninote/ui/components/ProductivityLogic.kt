@@ -35,7 +35,8 @@ fun noteWordTokens(note: NoteEntity): List<String> {
         else -> node.children().joinToString("") { text(it) } +
             if (node is Paragraph || node is Heading || node is org.commonmark.ext.gfm.tables.TableCell) "\n" else ""
     }
-    val body = text(NoteMarkdownParser.parseDocument(note.content).root)
+    val source = note.content.replace(Regex("""\[(?:color|bg):#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\]\("""), "(")
+    val body = text(NoteMarkdownParser.parseDocument(source).root)
         .replace(Regex("""(?m)^\[([ xX])\]\s*"""), "")
     return wordPattern.findAll(urlPattern.replace(note.title + "\n" + body, ""))
         .map { it.value.lowercase(Locale.ROOT) }.toList()

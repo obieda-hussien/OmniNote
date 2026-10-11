@@ -51,6 +51,8 @@ class ProductivityHistoryTest {
         assertEquals(2L, result.recordedWords)
         assertEquals(0, result.activeNotes)
         assertEquals(1, result.days.single().deleted)
+        assertEquals(1, result.days.single().restored)
+        assertEquals(1, result.days.single().trashed)
         assertTrue(runCatching { repository.insert(note) }.isFailure)
     }
     @Test fun baselineIsSeededOnceWithoutInventingCreationDatesOrActivity() = runBlocking {
@@ -175,6 +177,7 @@ class ProductivityHistoryTest {
     @Test fun markdownWordCountingAndStreaksAvoidMarkupAndGaps() {
         val note = NoteEntity(title = "عنوان", content = "# Hello **world**\n\n- [x] مهم\n\n![Photo](file:///a.jpg) [voice:Recording](file:///a.mp3)\n\n```\ncode words\n```\n\nhttps://example.com")
         assertEquals(listOf("عنوان", "hello", "world", "مهم"), noteWordTokens(note))
+        assertEquals(listOf("hello", "world"), noteWordTokens(note.copy(title = "", content = "[color:#FFFFFF](Hello) [bg:#000000](world)")))
         assertEquals(0L, addedWords(listOf("one", "two"), listOf("two", "one")))
         assertEquals(1L, addedWords(listOf("one"), listOf("one", "one")))
         assertEquals(2, writingStreak(setOf("2026-10-09", "2026-10-10"), "2026-10-11"))

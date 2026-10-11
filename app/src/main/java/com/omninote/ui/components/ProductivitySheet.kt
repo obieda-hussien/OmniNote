@@ -21,6 +21,7 @@ import java.util.*
 @Composable
 fun ProductivitySheet(snapshot: ProductivitySnapshot, error: String?, onRetry: () -> Unit, onDismiss: () -> Unit) {
     var period by remember { mutableStateOf(0) }
+    var visibleDays by remember(period) { mutableStateOf(30) }
     val today = productivityDay(System.currentTimeMillis())
     val days = remember(snapshot.days, period, today) {
         val limit = when (period) { 1 -> 7; 2 -> 30; else -> null }
@@ -91,8 +92,10 @@ fun ProductivitySheet(snapshot: ProductivitySnapshot, error: String?, onRetry: (
                     Text(stringResource(R.string.activity_history), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (days.isEmpty()) Text(stringResource(R.string.no_activity_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     else {
-                        if (period == 0 && days.size > 30) Text(stringResource(R.string.recent_activity_limit), style = MaterialTheme.typography.bodySmall)
-                        days.take(30).forEach { ActivityDayCard(it) }
+                        days.take(visibleDays).forEach { ActivityDayCard(it) }
+                        if (days.size > visibleDays) OutlinedButton(onClick = { visibleDays += 30 }, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.show_older_activity))
+                        }
                     }
                     val tracking = snapshot.tracking!!
                     Text(stringResource(R.string.tracking_baseline, localDateLabel(productivityDay(tracking.startedAt)), tracking.baselineNotes),
@@ -133,7 +136,7 @@ private fun ActivityDayCard(day: ProductivityDay) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(localDateLabel(day.day), style = MaterialTheme.typography.titleSmall)
             if (day.workedOn > 0) Text(stringResource(R.string.activity_writing, day.workedOn, day.wordsAdded), style = MaterialTheme.typography.bodyMedium)
-            val changes = listOf(R.string.activity_created to day.created, R.string.activity_archived to day.archived,
+            val changes = listOf(R.string.activity_created to day.created, R.string.activity_archived to day.archived, R.string.activity_trashed to day.trashed,
                 R.string.activity_restored to day.restored, R.string.activity_deleted to day.deleted)
                 .filter { it.second > 0 }.map { stringResource(it.first, it.second) }
             if (changes.isNotEmpty()) Text(changes.joinToString(" · "), style = MaterialTheme.typography.bodySmall,

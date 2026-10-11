@@ -33,6 +33,7 @@ data class ProductivityDay(
     val workedOn: Int,
     val created: Int,
     val archived: Int,
+    val trashed: Int,
     val restored: Int,
     val deleted: Int
 )
@@ -53,7 +54,8 @@ interface ProductivityDao {
         COUNT(DISTINCT CASE WHEN kind IN ('CREATED','EDITED') THEN historyId END) AS workedOn,
         SUM(CASE WHEN kind = 'CREATED' THEN 1 ELSE 0 END) AS created,
         SUM(CASE WHEN kind = 'ARCHIVED' THEN 1 ELSE 0 END) AS archived,
-        SUM(CASE WHEN kind IN ('RESTORED','UNARCHIVED') THEN 1 ELSE 0 END) AS restored,
+        SUM(CASE WHEN kind = 'TRASHED' THEN 1 ELSE 0 END) AS trashed,
+        COUNT(DISTINCT CASE WHEN kind IN ('RESTORED','UNARCHIVED') THEN historyId END) AS restored,
         SUM(CASE WHEN kind = 'DELETED' THEN 1 ELSE 0 END) AS deleted
         FROM productivity_activity GROUP BY day ORDER BY day DESC""")
     fun observeDays(): Flow<List<ProductivityDay>>

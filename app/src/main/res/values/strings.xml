@@ -47,12 +47,13 @@
     <string name="current_streak">Current writing streak: %1$d days</string>
     <string name="activity_history">Activity history</string>
     <string name="no_activity_yet">Your next writing session or library change will appear here.</string>
-    <string name="recent_activity_limit">Showing the 30 most recent days with activity.</string>
+    <string name="show_older_activity">Show older activity</string>
     <string name="tracking_baseline">Tracking started %1$s with %2$d existing notes. Notes deleted before tracking began cannot be counted.</string>
     <string name="history_privacy">History keeps counts and dates only. Deleted note text, titles and attachments are not kept here.</string>
     <string name="activity_writing">%1$d notes worked on · %2$d words added</string>
     <string name="activity_created">%1$d created</string>
     <string name="activity_archived">%1$d archived</string>
+    <string name="activity_trashed">%1$d moved to trash</string>
     <string name="activity_restored">%1$d restored</string>
     <string name="activity_deleted">%1$d deleted forever</string>
     <string name="library_organized">Library organized</string>
