@@ -897,7 +897,7 @@ fun NotesListScreen(
                                             note = note,
                                             searchQuery = searchQuery,
                                             onClick = {
-                                        if (note.id in pendingActions) return@NoteCard
+                                                if (note.id in pendingActions) return@NoteCard
                                                 if (note.isLocked) {
                                                     noteToUnlock = note
                                                     unlockPin = ""
@@ -908,7 +908,7 @@ fun NotesListScreen(
                                                 }
                                             },
                                             onLongClick = {
-                                        if (note.id in pendingActions) return@NoteCard
+                                                if (note.id in pendingActions) return@NoteCard
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 if (note.isLocked) {
                                                     noteToUnlock = note
@@ -920,7 +920,7 @@ fun NotesListScreen(
                                                 }
                                             },
                                             onDoubleTap = {
-                                        if (note.id in pendingActions) return@NoteCard
+                                                if (note.id in pendingActions) return@NoteCard
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 if (note.isLocked) {
                                                     noteToUnlock = note

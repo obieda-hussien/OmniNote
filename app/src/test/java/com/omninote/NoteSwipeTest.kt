@@ -58,6 +58,12 @@ class NoteSwipeTest {
         compose.mainClock.advanceTimeBy(1000)
         compose.onNodeWithTag("note_swipe_1").performTouchInput { swipeUp() }
         compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("note_swipe_1").performTouchInput {
+            down(Offset(width * 0.1f, height / 2f))
+            moveTo(Offset(width * 0.9f, height / 2f))
+            cancel()
+        }
+        compose.mainClock.advanceTimeBy(1000)
         compose.runOnIdle { enabled = false }
         compose.onNodeWithTag("note_swipe_1").performTouchInput { swipeRight() }
         compose.mainClock.advanceTimeBy(1000)

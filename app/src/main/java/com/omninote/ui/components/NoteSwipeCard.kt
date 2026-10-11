@@ -2,6 +2,8 @@ package com.omninote.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -10,6 +12,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.res.stringResource
@@ -22,7 +27,10 @@ import kotlin.math.abs
 
 fun swipeThreshold(width: Float, minimum: Float) = maxOf(minimum, width * 0.38f).coerceAtMost(width * 0.65f)
 @OptIn(ExperimentalMaterial3Api::class)
-private class SwipeStateHolder { var state: SwipeToDismissBoxState? = null }
+private class SwipeStateHolder {
+    var state: SwipeToDismissBoxState? = null
+    var released = false
+}
 
 /** Physical right/left actions stay predictable in RTL; the note content keeps its own direction. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,8 +49,9 @@ fun NoteSwipeCard(note: NoteEntity, enabled: Boolean, onAction: (NoteLibraryActi
     val state = rememberSwipeToDismissBoxState(
         positionalThreshold = { swipeThreshold(it, minimum) },
         confirmValueChange = { target ->
-            if (target != SwipeToDismissBoxValue.Settled && currentEnabled && requested == null && width > 0f &&
+            if (target != SwipeToDismissBoxValue.Settled && holder.released && currentEnabled && requested == null && width > 0f &&
                 abs(runCatching { holder.state?.requireOffset() ?: 0f }.getOrDefault(0f)) >= swipeThreshold(width, minimum)) {
+                holder.released = false
                 requested = swipeAction(currentNote, target == SwipeToDismissBoxValue.StartToEnd)
             }
             false // Keep the card until the database commits; cancellation/failure always settles it.
@@ -61,6 +70,19 @@ fun NoteSwipeCard(note: NoteEntity, enabled: Boolean, onAction: (NoteLibraryActi
     val leftLabel = stringResource(actionLabel(left))
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         SwipeToDismissBox(state, modifier = modifier.onSizeChanged { width = it.width.toFloat() }
+            .pointerInput(enabled, note.id) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    holder.released = false
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.none { it.pressed }) {
+                            holder.released = event.type == PointerEventType.Release
+                            break
+                        }
+                    }
+                }
+            }
             .testTag("note_swipe_${note.id}").semantics {
                 if (enabled) customActions = listOf(
                     CustomAccessibilityAction(rightLabel) { callback(right); true },
