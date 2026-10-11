@@ -1,5 +1,5 @@
---- app/src/main/java/com/omninote/data/AddEditNoteScreen.kt
-+++ app/src/main/java/com/omninote/data/AddEditNoteScreen.kt
+--- app/src/main/java/com/omni/noteplus/data/AddEditNoteScreen.kt
++++ app/src/main/java/com/omni/noteplus/data/AddEditNoteScreen.kt
 @@ -19,6 +19,7 @@
  import androidx.compose.ui.graphics.asImageBitmap
  import androidx.compose.ui.graphics.drawscope.Stroke
@@ -15,7 +15,7 @@
                          Box(modifier = Modifier.fillMaxSize()) {
 +                            val view = LocalView.current
 +                            val customTextToolbar = remember(view, contentValue) {
-+                                com.omninote.ui.components.CustomTextToolbar(view) { prefix, suffix ->
++                                com.omni.noteplus.ui.components.CustomTextToolbar(view) { prefix, suffix ->
 +                                    val selStart = contentValue.selection.min
 +                                    val selEnd = contentValue.selection.max
 +                                    val text = contentValue.text
