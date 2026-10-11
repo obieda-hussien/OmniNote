@@ -123,12 +123,20 @@ class NoteRepository(
         }
     }
 
-    private suspend fun <T> actionTransaction(block: suspend () -> T): T {
+    private suspend fun <T> actionTransaction(id: Int, block: suspend () -> T): T {
         actionMutex.lock()
-        try { return if (database == null) block() else database.withTransaction { initializeInTransaction(); block() } }
+        suspend fun runAction(): T {
+            val previousToken = undoTokens[id]
+            try { return block() }
+            catch (error: Exception) {
+                if (previousToken == null) undoTokens.remove(id) else undoTokens[id] = previousToken
+                throw error
+            }
+        }
+        try { return if (database == null) runAction() else database.withTransaction { initializeInTransaction(); runAction() } }
         finally { actionMutex.unlock() }
     }
-    suspend fun applyLibraryAction(id: Int, action: NoteLibraryAction, expected: LibraryState, pin: String? = null): NoteActionReceipt = actionTransaction {
+    suspend fun applyLibraryAction(id: Int, action: NoteLibraryAction, expected: LibraryState, pin: String? = null): NoteActionReceipt = actionTransaction(id) {
         val latest = noteDao.getNoteById(id) ?: throw NoteActionConflictException()
         if (latest.libraryState() != expected) throw NoteActionConflictException()
         if (latest.isLocked && (pin == null || pin != latest.lockPin)) throw NoteActionLockedException()
@@ -153,7 +161,7 @@ class NoteRepository(
             NoteActionReceipt(id, latest.title, action, expected, updated.libraryState(), token, pin)
         }
     }
-    suspend fun undoLibraryAction(receipt: NoteActionReceipt): Unit = actionTransaction {
+    suspend fun undoLibraryAction(receipt: NoteActionReceipt): Unit = actionTransaction(receipt.noteId) {
         val latest = noteDao.getNoteById(receipt.noteId) ?: throw NoteActionConflictException()
         if (receipt.undoToken == null || undoTokens[receipt.noteId] != receipt.undoToken || latest.libraryState() != receipt.after) throw NoteActionConflictException()
         if (latest.isLocked && (receipt.authorizedPin == null || latest.lockPin != receipt.authorizedPin)) throw NoteActionLockedException()

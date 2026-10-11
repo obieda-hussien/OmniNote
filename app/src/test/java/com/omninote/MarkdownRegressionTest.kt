@@ -107,6 +107,7 @@ class MarkdownRegressionTest {
         assertEquals(1, parts.filterIsInstance<ParagraphPart.Photo>().size)
         assertEquals(1, parts.filterIsInstance<ParagraphPart.Audio>().size)
         assertEquals(1, parts.filterIsInstance<ParagraphPart.File>().size)
+        assertEquals(setOf(AttachmentKind.IMAGE, AttachmentKind.AUDIO, AttachmentKind.FILE), NoteMarkdownParser.cardPreview(source).media)
         assertEquals(AttachmentKind.AUDIO, attachmentKind("content://opaque/1", "unknown", "audio/mpeg"))
         assertEquals(AttachmentKind.FILE, attachmentKind("file:///real.pdf", "wrong.jpg"))
         assertEquals(AttachmentKind.FILE, attachmentKind("content://opaque/1", "wrong.jpg", "application/pdf"))
@@ -115,7 +116,7 @@ class MarkdownRegressionTest {
     @Test fun genericPhotoAndAudioFileLinksActuallyRenderMediaControls() {
         compose.setContent { MyApplicationTheme {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                MarkdownContent("[file:Photo.jpg](file:///photo.jpg)\n[file:Song.mp3](file:///song.mp3)")
+                MarkdownContent(rawText = "[file:Photo.jpg](file:///photo.jpg)\n[file:Song.mp3](file:///song.mp3)")
             }
         } }
         compose.onNodeWithContentDescription("Photo.jpg").assertIsDisplayed()

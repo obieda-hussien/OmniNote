@@ -839,6 +839,7 @@ fun NotesListScreen(
                                     note = note,
                                     searchQuery = searchQuery,
                                     onClick = {
+                                        if (note.id in pendingActions) return@NoteCard
                                         if (note.isLocked) {
                                             noteToUnlock = note
                                             unlockPin = ""
@@ -849,6 +850,7 @@ fun NotesListScreen(
                                         }
                                     },
                                     onLongClick = {
+                                        if (note.id in pendingActions) return@NoteCard
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         if (note.isLocked) {
                                             noteToUnlock = note
@@ -860,6 +862,7 @@ fun NotesListScreen(
                                         }
                                     },
                                     onDoubleTap = {
+                                        if (note.id in pendingActions) return@NoteCard
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         if (note.isLocked) {
                                             noteToUnlock = note
@@ -894,6 +897,7 @@ fun NotesListScreen(
                                             note = note,
                                             searchQuery = searchQuery,
                                             onClick = {
+                                        if (note.id in pendingActions) return@NoteCard
                                                 if (note.isLocked) {
                                                     noteToUnlock = note
                                                     unlockPin = ""
@@ -904,6 +908,7 @@ fun NotesListScreen(
                                                 }
                                             },
                                             onLongClick = {
+                                        if (note.id in pendingActions) return@NoteCard
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 if (note.isLocked) {
                                                     noteToUnlock = note
@@ -915,6 +920,7 @@ fun NotesListScreen(
                                                 }
                                             },
                                             onDoubleTap = {
+                                        if (note.id in pendingActions) return@NoteCard
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 if (note.isLocked) {
                                                     noteToUnlock = note
@@ -1731,9 +1737,13 @@ fun NoteCard(
     val readTimeChars = if (words > 10) "${words / 200 + 1} min read" else "$words words"
 
     // Analyze attachments/metadata inside note's content to decorate card beautifully
-    val hasVoice = note.content.contains("[voice:") || note.content.contains("[audio:")
-    val hasFile = note.content.contains("[file:")
-    val hasImage = note.content.contains("![")
+    val cardPreview by produceState(com.omninote.ui.components.NoteCardPreview("", emptySet()), note.content, note.isLocked) {
+        value = if (note.isLocked) com.omninote.ui.components.NoteCardPreview("", emptySet())
+            else withContext(Dispatchers.Default) { NoteMarkdownParser.cardPreview(note.content) }
+    }
+    val hasVoice = com.omninote.ui.components.AttachmentKind.AUDIO in cardPreview.media
+    val hasFile = com.omninote.ui.components.AttachmentKind.FILE in cardPreview.media
+    val hasImage = com.omninote.ui.components.AttachmentKind.IMAGE in cardPreview.media
     val hasTable = note.content.contains("|") && note.content.contains("---|")
     val hasCode = note.content.contains("```")
     val hasChecklist = remember(note.content) { Regex("""(?m)^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]""").containsMatchIn(note.content) }
@@ -1823,9 +1833,7 @@ fun NoteCard(
 
                 // Content Preview block
                 if (note.content.isNotBlank()) {
-                    val cleanContent by produceState("", note.content) {
-                        value = withContext(Dispatchers.Default) { NoteMarkdownParser.preview(note.content) }
-                    }
+                    val cleanContent = cardPreview.text
 
                     Text(
                         text = highlightSearchQuery(cleanContent, searchQuery, MaterialTheme.colorScheme.primary),

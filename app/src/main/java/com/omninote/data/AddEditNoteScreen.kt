@@ -66,6 +66,7 @@ import com.omninote.ui.components.MarkdownDocumentPreview
 import com.omninote.ui.viewmodels.NotesViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -2252,7 +2253,16 @@ suspend fun copyUriToInternalStorage(context: android.content.Context, uri: andr
         val file = java.io.File(context.filesDir, "${java.util.UUID.randomUUID()}_$name")
         try {
             val input = context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Attachment unavailable")
-            input.use { source -> file.outputStream().use { source.copyTo(it) } }
+            input.use { source -> file.outputStream().use { output ->
+                val bytes = ByteArray(64 * 1024)
+                while (true) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    val count = source.read(bytes)
+                    if (count < 0) break
+                    output.write(bytes, 0, count)
+                }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            } }
             android.net.Uri.fromFile(file)
         } catch (error: Exception) {
             file.delete()

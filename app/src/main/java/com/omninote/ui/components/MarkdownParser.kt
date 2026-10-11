@@ -6,6 +6,8 @@ import org.commonmark.parser.IncludeSourceSpans
 import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
 
+data class NoteCardPreview(val text: String, val media: Set<AttachmentKind>)
+
 /** Parse once per document; source spans keep preview tasks tied to the correct source line. */
 object NoteMarkdownParser {
     private val parser = Parser.builder()
@@ -17,20 +19,26 @@ object NoteMarkdownParser {
         val compatible = compatiblePreviewSource(source)
         return PreviewDocument(parser.parse(compatible.lines.joinToString("\n")), compatible.lines, compatible.sourceLines)
     }
-    fun preview(source: String): String {
+    fun preview(source: String): String = cardPreview(source).text
+    fun cardPreview(source: String): NoteCardPreview {
+        val media = mutableSetOf<AttachmentKind>()
         val result = StringBuilder()
         fun append(node: Node) {
             when (node) {
-                is org.commonmark.node.Image -> result.append("[Image]")
+                is org.commonmark.node.Image -> { media.add(AttachmentKind.IMAGE); result.append("[Image]") }
                 is org.commonmark.node.Link -> {
                     val label = node.children().filterIsInstance<org.commonmark.node.Text>().joinToString("") { it.literal }
                     when {
-                        label.startsWith("voice") || label.startsWith("audio") -> result.append("[Voice clip]")
-                        label.startsWith("file:") -> result.append(when (attachmentKind(node.destination, label.substringAfter(':'))) {
+                        label.startsWith("voice") || label.startsWith("audio") -> { media.add(AttachmentKind.AUDIO); result.append("[Voice clip]") }
+                        label.startsWith("file:") -> {
+                            val kind = attachmentKind(node.destination, label.substringAfter(':'))
+                            media.add(kind)
+                            result.append(when (kind) {
                             AttachmentKind.IMAGE -> "[Image]"
                             AttachmentKind.AUDIO -> "[Voice clip]"
                             AttachmentKind.FILE -> "[Attachment]"
                         })
+                        }
                         else -> node.children().forEach { append(it) }
                     }
                 }
@@ -44,7 +52,7 @@ object NoteMarkdownParser {
             if (node is org.commonmark.node.Paragraph || node is org.commonmark.node.Heading) result.append('\n')
         }
         append(parseDocument(source.take(8000)).root)
-        return result.toString().trim().take(1000)
+        return NoteCardPreview(result.toString().trim().take(1000), media)
     }
 }
 
