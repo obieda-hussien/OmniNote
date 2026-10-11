@@ -30,16 +30,17 @@ class NoteDesignTest {
     @Test fun semanticModifiersKeepEveryToolbarGlyphAtItsIntendedSize() {
         compose.setContent {
             MyApplicationTheme {
-                androidx.compose.foundation.layout.Row {
-                    com.omninote.ui.screens.CanvasCustomIcon(com.omninote.ui.screens.CanvasIconType.BACK,
-                        androidx.compose.ui.Modifier.semantics { contentDescription = "Back glyph" })
-                    com.omninote.ui.screens.CanvasCustomIcon(com.omninote.ui.screens.CanvasIconType.VISIBILITY,
-                        androidx.compose.ui.Modifier.semantics { contentDescription = "Preview glyph" })
+                androidx.compose.foundation.layout.Box {
+                    com.omninote.ui.components.OmniIconType.entries.forEach { type ->
+                        com.omninote.ui.components.OmniIcon(type,
+                            androidx.compose.ui.Modifier.semantics { contentDescription = "Glyph ${type.name}" })
+                    }
                 }
             }
         }
-        compose.onNodeWithContentDescription("Back glyph").assertWidthIsEqualTo(24.dp).assertHeightIsEqualTo(24.dp)
-        compose.onNodeWithContentDescription("Preview glyph").assertWidthIsEqualTo(24.dp).assertHeightIsEqualTo(24.dp)
+        com.omninote.ui.components.OmniIconType.entries.forEach { type ->
+            compose.onNodeWithContentDescription("Glyph ${type.name}").assertWidthIsEqualTo(24.dp).assertHeightIsEqualTo(24.dp)
+        }
     }
 
     @Test fun customNoteColoursKeepReadableTextInBothThemes() {

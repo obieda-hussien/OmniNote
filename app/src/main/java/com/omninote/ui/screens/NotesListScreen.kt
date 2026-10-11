@@ -23,9 +23,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import com.omninote.ui.components.OmniIcon
+import com.omninote.ui.components.OmniIconType
 import com.omninote.ui.components.NoteLibraryHeader
 import com.omninote.ui.components.NoteCaptureBar
 import com.omninote.ui.components.LibraryChromeState
@@ -127,232 +128,14 @@ fun BeautifulEmptyStateGraphic(
     primaryColor: Color,
     secondaryColor: Color
 ) {
-    Canvas(modifier = Modifier.size(140.dp)) {
-        val width = size.width
-        val height = size.height
-
-        if (isSearchOrFilter) {
-            // Draw a gorgeous futuristic glowing Search Magnifying Glass
-            drawCircle(
-                color = primaryColor.copy(alpha = 0.08f),
-                radius = width * 0.45f
-            )
-            drawCircle(
-                color = primaryColor.copy(alpha = 0.15f),
-                radius = width * 0.3f
-            )
-            drawLine(
-                color = primaryColor,
-                start = Offset(width * 0.65f, height * 0.65f),
-                end = Offset(width * 0.85f, height * 0.85f),
-                strokeWidth = 12f,
-                cap = androidx.compose.ui.graphics.StrokeCap.Round
-            )
-            drawCircle(
-                color = primaryColor,
-                radius = width * 0.22f,
-                center = Offset(width * 0.45f, height * 0.45f),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 8f)
-            )
-            drawCircle(
-                color = secondaryColor,
-                radius = 6f,
-                center = Offset(width * 0.38f, height * 0.38f)
-            )
-        } else {
-            when (tabType) {
-                "ACTIVE" -> {
-                    // Draw a stylized vector notebook page with rounded corners
-                    drawCircle(
-                        color = primaryColor.copy(alpha = 0.08f),
-                        radius = width * 0.45f
-                    )
-
-                    val cardW = width * 0.45f
-                    val cardH = height * 0.6f
-                    val cardX = (width - cardW) / 2
-                    val cardY = (height - cardH) / 2
-
-                    drawRoundRect(
-                        color = primaryColor.copy(alpha = 0.12f),
-                        topLeft = Offset(cardX, cardY),
-                        size = Size(cardW, cardH),
-                        cornerRadius = CornerRadius(16f, 16f)
-                    )
-
-                    drawRoundRect(
-                        color = primaryColor,
-                        topLeft = Offset(cardX, cardY),
-                        size = Size(cardW, cardH),
-                        cornerRadius = CornerRadius(16f, 16f),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                    )
-
-                    val startLineX = cardX + 12f
-                    val endLineX = cardX + cardW - 12f
-                    val firstLineY = cardY + 20f
-                    val lineSpacing = 20f
-
-                    drawLine(
-                        color = primaryColor,
-                        start = Offset(startLineX, firstLineY),
-                        end = Offset(cardX + cardW * 0.6f, firstLineY),
-                        strokeWidth = 4f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-
-                    drawLine(
-                        color = primaryColor.copy(alpha = 0.5f),
-                        start = Offset(startLineX, firstLineY + lineSpacing),
-                        end = Offset(endLineX, firstLineY + lineSpacing),
-                        strokeWidth = 4f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-
-                    drawLine(
-                        color = primaryColor.copy(alpha = 0.5f),
-                        start = Offset(startLineX, firstLineY + lineSpacing * 2),
-                        end = Offset(cardX + cardW * 0.8f, firstLineY + lineSpacing * 2),
-                        strokeWidth = 4f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-
-                    drawCircle(
-                        color = secondaryColor,
-                        radius = 8f,
-                        center = Offset(cardX + cardW + 10f, cardY - 5f)
-                    )
-                    drawCircle(
-                        color = secondaryColor.copy(alpha = 0.4f),
-                        radius = 14f,
-                        center = Offset(cardX + cardW + 10f, cardY - 5f),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
-                    )
-                }
-                "ARCHIVED" -> {
-                    // Draw a gorgeous archive secure vault / safe box
-                    drawCircle(
-                        color = primaryColor.copy(alpha = 0.08f),
-                        radius = width * 0.45f
-                    )
-
-                    val boxW = width * 0.5f
-                    val boxH = height * 0.45f
-                    val boxX = (width - boxW) / 2
-                    val boxY = (height - boxH) / 2 + 10f
-
-                    // Box base
-                    drawRoundRect(
-                        color = primaryColor.copy(alpha = 0.1f),
-                        topLeft = Offset(boxX, boxY),
-                        size = Size(boxW, boxH),
-                        cornerRadius = CornerRadius(12f, 12f)
-                    )
-                    drawRoundRect(
-                        color = primaryColor,
-                        topLeft = Offset(boxX, boxY),
-                        size = Size(boxW, boxH),
-                        cornerRadius = CornerRadius(12f, 12f),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                    )
-
-                    // Lid top
-                    val lidW = boxW + 16f
-                    val lidH = 14f
-                    val lidX = boxX - 8f
-                    val lidY = boxY - 14f
-                    drawRoundRect(
-                        color = primaryColor,
-                        topLeft = Offset(lidX, lidY),
-                        size = Size(lidW, lidH),
-                        cornerRadius = CornerRadius(6f, 6f)
-                    )
-
-                    // Lock handle
-                    drawRoundRect(
-                        color = secondaryColor,
-                        topLeft = Offset(width / 2 - 16f, boxY + boxH * 0.35f),
-                        size = Size(32f, 12f),
-                        cornerRadius = CornerRadius(6f, 6f)
-                    )
-
-                    // Star decoration
-                    drawCircle(
-                        color = secondaryColor,
-                        radius = 6f,
-                        center = Offset(width / 2, boxY + boxH * 0.35f - 16f)
-                    )
-                }
-                "TRASHED" -> {
-                    // Draw a recycle trash bin
-                    drawCircle(
-                        color = primaryColor.copy(alpha = 0.08f),
-                        radius = width * 0.45f
-                    )
-
-                    val binW = width * 0.38f
-                    val binH = height * 0.48f
-                    val binX = (width - binW) / 2
-                    val binY = (height - binH) / 2 + 10f
-
-                    // Bin body
-                    drawRoundRect(
-                        color = primaryColor.copy(alpha = 0.1f),
-                        topLeft = Offset(binX, binY),
-                        size = Size(binW, binH),
-                        cornerRadius = CornerRadius(8f, 8f)
-                    )
-                    drawRoundRect(
-                        color = primaryColor,
-                        topLeft = Offset(binX, binY),
-                        size = Size(binW, binH),
-                        cornerRadius = CornerRadius(8f, 8f),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                    )
-
-                    // Top lid line
-                    drawLine(
-                        color = primaryColor,
-                        start = Offset(binX - 12f, binY),
-                        end = Offset(binX + binW + 12f, binY),
-                        strokeWidth = 6f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-
-                    // Vertical lines on bin
-                    drawLine(
-                        color = primaryColor.copy(alpha = 0.5f),
-                        start = Offset(binX + binW * 0.3f, binY + 16f),
-                        end = Offset(binX + binW * 0.3f, binY + binH - 16f),
-                        strokeWidth = 4f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-                    drawLine(
-                        color = primaryColor.copy(alpha = 0.5f),
-                        start = Offset(binX + binW * 0.7f, binY + 16f),
-                        end = Offset(binX + binW * 0.7f, binY + binH - 16f),
-                        strokeWidth = 4f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-
-                    // Cross / X badge on trash indicating deleted items
-                    drawLine(
-                        color = secondaryColor,
-                        start = Offset(width / 2 - 10f, binY + binH / 2 - 10f),
-                        end = Offset(width / 2 + 10f, binY + binH / 2 + 10f),
-                        strokeWidth = 4f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-                    drawLine(
-                        color = secondaryColor,
-                        start = Offset(width / 2 + 10f, binY + binH / 2 - 10f),
-                        end = Offset(width / 2 - 10f, binY + binH / 2 + 10f),
-                        strokeWidth = 4f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-                }
-            }
-        }
+    Box(Modifier.size(120.dp).background(primaryColor.copy(alpha = 0.08f), RoundedCornerShape(36.dp)),
+        contentAlignment = Alignment.Center) {
+        OmniIcon(when {
+            isSearchOrFilter -> OmniIconType.SEARCH
+            tabType == "TRASHED" -> OmniIconType.DELETE
+            tabType == "ARCHIVED" -> OmniIconType.ARCHIVE
+            else -> OmniIconType.NOTES
+        }, Modifier.size(56.dp), primaryColor)
     }
 }
 
@@ -577,8 +360,6 @@ fun NotesListScreen(
 
     // Statistical variables for dashboard metrics
     val totalNotesCount = notes.size
-    val pinnedNotesCount = notes.count { it.isPinned }
-    val audioNotesCount = notes.count { it.content.contains("[voice:") || it.content.contains("[audio:") }
 
     val isImeVisible = WindowInsets.isImeVisible
     val density = LocalDensity.current
@@ -658,11 +439,11 @@ fun NotesListScreen(
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(
+                                OmniIcon(
                                     type = if (snackbarData.visuals.message.contains("Trash", ignoreCase = true) || snackbarData.visuals.message.contains("trash", ignoreCase = true)) {
-                                        CanvasIconType.DELETE
+                                        OmniIconType.DELETE
                                     } else {
-                                        CanvasIconType.TICK
+                                        OmniIconType.TICK
                                     },
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(18.dp)
@@ -725,7 +506,7 @@ fun NotesListScreen(
                 else if (currentTab == "TRASHED" && notes.isNotEmpty()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = { showEmptyTrashDialog = true }) {
-                            CanvasCustomIcon(CanvasIconType.DELETE, modifier = Modifier.size(20.dp))
+                            OmniIcon(OmniIconType.DELETE, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(stringResource(R.string.empty_trash_title))
                         }
@@ -755,7 +536,7 @@ fun NotesListScreen(
                         modifier = Modifier.height(64.dp)
                     ) {
                         NavigationBarItem(
-                            icon = { CanvasActiveTabIcon(isSelected = currentTab == "ACTIVE") },
+                            icon = { OmniIcon(OmniIconType.NOTES) },
                             label = { Text("Active", fontWeight = FontWeight.Bold) },
                             selected = currentTab == "ACTIVE",
                             onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
@@ -770,8 +551,8 @@ fun NotesListScreen(
                         )
                         NavigationBarItem(
                             icon = {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.ARCHIVE,
+                                OmniIcon(
+                                    type = OmniIconType.ARCHIVE,
                                     tint = if (currentTab == "ARCHIVED") MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                 )
                             },
@@ -788,7 +569,7 @@ fun NotesListScreen(
                             )
                         )
                         NavigationBarItem(
-                            icon = { CanvasTrashTabIcon(isSelected = currentTab == "TRASHED") },
+                            icon = { OmniIcon(OmniIconType.DELETE) },
                             label = { Text("Trash", fontWeight = FontWeight.Bold) },
                             selected = currentTab == "TRASHED",
                             onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
@@ -831,8 +612,8 @@ fun NotesListScreen(
                         onClick = { selectedTag = null },
                         label = { Text("All Notes", fontWeight = if (isAllNotes) FontWeight.SemiBold else FontWeight.SemiBold) },
                         leadingIcon = {
-                            CanvasCustomIcon(
-                                type = CanvasIconType.MENU_BOOK,
+                            OmniIcon(
+                                type = OmniIconType.MENU_BOOK,
                                 modifier = Modifier.size(16.dp)
                             )
                         },
@@ -859,8 +640,8 @@ fun NotesListScreen(
                             label = { Text(tag, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.SemiBold) },
                             leadingIcon = {
                                 AnimatedContent(targetState = isSelected, label = "TagIcon") { selected ->
-                                    CanvasCustomIcon(
-                                        type = if (selected) CanvasIconType.TICK else CanvasIconType.LABEL,
+                                    OmniIcon(
+                                        type = if (selected) OmniIconType.TICK else OmniIconType.LABEL,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -1208,11 +989,11 @@ fun NotesListScreen(
                                         }
                                         val iconType = when (activeDirection) {
                                             SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
-                                                "TRASHED" -> CanvasIconType.UNARCHIVE
-                                                "ARCHIVED" -> CanvasIconType.UNARCHIVE
-                                                else -> CanvasIconType.ARCHIVE
+                                                "TRASHED" -> OmniIconType.UNARCHIVE
+                                                "ARCHIVED" -> OmniIconType.UNARCHIVE
+                                                else -> OmniIconType.ARCHIVE
                                             }
-                                            else -> CanvasIconType.DELETE
+                                            else -> OmniIconType.DELETE
                                         }
                                         val iconTint = when (activeDirection) {
                                             SwipeToDismissBoxValue.StartToEnd -> when (currentTab) {
@@ -1232,7 +1013,7 @@ fun NotesListScreen(
                                             contentAlignment = alignment
                                         ) {
                                             if (activeDirection != SwipeToDismissBoxValue.Settled) {
-                                                CanvasCustomIcon(
+                                                OmniIcon(
                                                     type = iconType,
                                                     tint = iconTint
                                                 )
@@ -1317,7 +1098,7 @@ fun NotesListScreen(
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            OmniIcon(OmniIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         }
                         Text(
                             text = "Sort & Filters",
@@ -1333,7 +1114,7 @@ fun NotesListScreen(
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                     ) {
-                         CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                         OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                     }
                 }
 
@@ -1385,8 +1166,8 @@ fun NotesListScreen(
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                             if (isSelected) {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.TICK,
+                                OmniIcon(
+                                    type = OmniIconType.TICK,
                                     modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -1413,8 +1194,8 @@ fun NotesListScreen(
                         onClick = { filterPinnedOnly = !filterPinnedOnly },
                         label = { Text("Pinned Only", fontWeight = FontWeight.Bold) },
                         leadingIcon = {
-                            CanvasCustomIcon(
-                                type = if (filterPinnedOnly) CanvasIconType.PIN else CanvasIconType.UNPIN,
+                            OmniIcon(
+                                type = if (filterPinnedOnly) OmniIconType.PIN else OmniIconType.UNPIN,
                                 modifier = Modifier.size(16.dp),
                                 tint = if (filterPinnedOnly) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.secondary
                             )
@@ -1440,85 +1221,11 @@ fun NotesListScreen(
         }
     }
 
-    // Stats & Gamification Dashboard
     if (showStatsDashboard) {
-        val totalWords = notes.sumOf { it.content.split(Regex("\\s+")).count { word -> word.isNotBlank() } }
-        val avgWords = if (notes.isNotEmpty()) totalWords / notes.size else 0
-        val writerLevel = when {
-            totalNotesCount >= 50 -> "Master Scribe"
-            totalNotesCount >= 20 -> "Prolific Writer"
-            totalNotesCount >= 5 -> "Novice Note-taker"
-            else -> "Beginner"
-        }
-        val levelColor = when {
-            totalNotesCount >= 50 -> Color(0xFFFFD700) // Gold
-            totalNotesCount >= 20 -> Color(0xFFC0C0C0) // Silver
-            totalNotesCount >= 5 -> Color(0xFFCD7F32)  // Bronze
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
-
-        OmniSheet(
-            onDismissRequest = { showStatsDashboard = false },
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    CanvasCustomIcon(CanvasIconType.INSIGHTS, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Your Productivity",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = writerLevel,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = levelColor
-                    )
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Total Notes", style = MaterialTheme.typography.labelMedium)
-                            Text("$totalNotesCount", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Total Words", style = MaterialTheme.typography.labelMedium)
-                            Text("$totalWords", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.secondary)
-                        }
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Pinned", style = MaterialTheme.typography.labelMedium)
-                            Text("$pinnedNotesCount", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.tertiary)
-                        }
-                    }
-                    Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Avg. Length", style = MaterialTheme.typography.labelMedium)
-                            Text("$avgWords", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
-                        }
-                    }
-                }
-
-                Button(
-                    onClick = { showStatsDashboard = false },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Keep Writing", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        val productivity by viewModel.productivity.collectAsStateWithLifecycle()
+        val productivityError by viewModel.productivityError.collectAsStateWithLifecycle()
+        com.omninote.ui.components.ProductivitySheet(productivity, productivityError,
+            onRetry = viewModel::initializeProductivity, onDismiss = { showStatsDashboard = false })
     }
 
     // Dynamic Quick Actions Pop-Up Dialogue
@@ -1555,7 +1262,7 @@ fun NotesListScreen(
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            OmniIcon(OmniIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         }
                         Text("Note options", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     }
@@ -1566,7 +1273,7 @@ fun NotesListScreen(
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                     ) {
-                        CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                        OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                     }
                 }
 
@@ -1608,8 +1315,8 @@ fun NotesListScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                CanvasCustomIcon(
-                                    type = if (quickPinned) CanvasIconType.PIN else CanvasIconType.UNPIN,
+                                OmniIcon(
+                                    type = if (quickPinned) OmniIconType.PIN else OmniIconType.UNPIN,
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -1632,7 +1339,7 @@ fun NotesListScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                CanvasCustomIcon(CanvasIconType.ARROW_UP, modifier = Modifier.size(16.dp))
+                                OmniIcon(OmniIconType.ARROW_UP, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Move Up", fontWeight = FontWeight.Bold)
                             }
@@ -1642,7 +1349,7 @@ fun NotesListScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                CanvasCustomIcon(CanvasIconType.ARROW_DOWN, modifier = Modifier.size(16.dp))
+                                OmniIcon(OmniIconType.ARROW_DOWN, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Move Down", fontWeight = FontWeight.Bold)
                             }
@@ -1677,8 +1384,8 @@ fun NotesListScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (quickColor == colorHex) {
-                                    CanvasCustomIcon(
-                                        type = CanvasIconType.TICK,
+                                    OmniIcon(
+                                        type = OmniIconType.TICK,
                                         tint = if (colorHex == "#E6E3FF" || colorHex == "#FFF0CC" || colorHex == "#FFD6EC" || colorHex == null) MaterialTheme.colorScheme.primary else Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1710,7 +1417,7 @@ fun NotesListScreen(
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.tertiaryContainer)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.SHARE, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(20.dp))
+                        OmniIcon(OmniIconType.SHARE, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(20.dp))
                     }
 
                     IconButton(
@@ -1727,7 +1434,7 @@ fun NotesListScreen(
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.errorContainer)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
+                        OmniIcon(OmniIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                     }
 
                     if (currentTab != "ARCHIVED" && currentTab != "TRASHED") {
@@ -1738,7 +1445,7 @@ fun NotesListScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.secondaryContainer)
                         ) {
-                            CanvasCustomIcon(CanvasIconType.ARCHIVE, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                            OmniIcon(OmniIconType.ARCHIVE, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
                         }
                     } else if (currentTab == "ARCHIVED") {
                         IconButton(
@@ -1748,7 +1455,7 @@ fun NotesListScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.secondaryContainer)
                         ) {
-                            CanvasCustomIcon(CanvasIconType.UNARCHIVE, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                            OmniIcon(OmniIconType.UNARCHIVE, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
                         }
                     }
 
@@ -1850,7 +1557,7 @@ fun NotesListScreen(
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    CanvasCustomIcon(CanvasIconType.LOCK, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                    OmniIcon(OmniIconType.LOCK, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                 }
 
                 Text(
@@ -1967,7 +1674,7 @@ fun NotesListScreen(
             val iconTint: Color
             val titleTextColor: Color
             val progressBarColor: Color
-            val iconType: CanvasIconType
+            val iconType: OmniIconType
 
             when (data.type) {
                 SnackbarType.ERROR -> {
@@ -1975,28 +1682,28 @@ fun NotesListScreen(
                     iconTint = MaterialTheme.colorScheme.error
                     titleTextColor = Color(0xFFFCA5A5)
                     progressBarColor = Color(0xFFEF4444)
-                    iconType = CanvasIconType.DELETE
+                    iconType = OmniIconType.DELETE
                 }
                 SnackbarType.SUCCESS -> {
                     iconContainerColor = Color(0x2610B981)
                     iconTint = MaterialTheme.colorScheme.tertiary
                     titleTextColor = Color(0xFF6EE7B7)
                     progressBarColor = Color(0xFF10B981)
-                    iconType = CanvasIconType.TICK
+                    iconType = OmniIconType.TICK
                 }
                 SnackbarType.INFO -> {
                     iconContainerColor = Color(0x263B82F6)
                     iconTint = MaterialTheme.colorScheme.primary
                     titleTextColor = Color(0xFF93C5FD)
                     progressBarColor = Color(0xFF3B82F6)
-                    iconType = CanvasIconType.TICK
+                    iconType = OmniIconType.TICK
                 }
                 SnackbarType.WARNING -> {
                     iconContainerColor = Color(0x26F59E0B)
                     iconTint = MaterialTheme.colorScheme.secondary
                     titleTextColor = Color(0xFFFCD34D)
                     progressBarColor = Color(0xFFF59E0B)
-                    iconType = CanvasIconType.TICK
+                    iconType = OmniIconType.TICK
                 }
             }
 
@@ -2030,7 +1737,7 @@ fun NotesListScreen(
                                     .background(iconContainerColor),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(
+                                OmniIcon(
                                     type = iconType,
                                     tint = iconTint,
                                     modifier = Modifier.size(20.dp)
@@ -2098,7 +1805,7 @@ fun NotesListScreen(
                                 modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Close,
+                                    imageVector = Icons.Rounded.Close,
                                     contentDescription = "Close Notification",
                                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                                     modifier = Modifier.size(18.dp)
@@ -2130,7 +1837,7 @@ fun NotesListScreen(
 
 @Composable
 fun StatBadge(
-    iconType: CanvasIconType,
+    iconType: OmniIconType,
     label: String,
     value: String,
     color: Color
@@ -2144,7 +1851,7 @@ fun StatBadge(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            CanvasCustomIcon(
+            OmniIcon(
                 type = iconType,
                 tint = color,
                 modifier = Modifier.size(16.dp)
@@ -2216,8 +1923,8 @@ fun NoteCard(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CanvasCustomIcon(
-                        type = CanvasIconType.LOCK,
+                    OmniIcon(
+                        type = OmniIconType.LOCK,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(32.dp)
                     )
@@ -2262,8 +1969,8 @@ fun NoteCard(
                                 .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            CanvasCustomIcon(
-                                type = CanvasIconType.PIN,
+                            OmniIcon(
+                                type = OmniIconType.PIN,
                                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -2298,22 +2005,22 @@ fun NoteCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (hasVoice) {
-                            IconBadge(type = CanvasIconType.MIC, desc = "Voice Recording Indicator", color = MaterialTheme.colorScheme.tertiary)
+                            IconBadge(type = OmniIconType.MIC, desc = "Voice Recording Indicator", color = MaterialTheme.colorScheme.tertiary)
                         }
                         if (hasImage) {
-                            IconBadge(type = CanvasIconType.IMAGE, desc = "Image Attachment Indicator", color = MaterialTheme.colorScheme.primary)
+                            IconBadge(type = OmniIconType.IMAGE, desc = "Image Attachment Indicator", color = MaterialTheme.colorScheme.primary)
                         }
                         if (hasFile) {
-                            IconBadge(type = CanvasIconType.ATTACH_FILE, desc = "File Document Indicator", color = MaterialTheme.colorScheme.secondary)
+                            IconBadge(type = OmniIconType.ATTACH_FILE, desc = "File Document Indicator", color = MaterialTheme.colorScheme.secondary)
                         }
                         if (hasChecklist) {
-                            IconBadge(type = CanvasIconType.CHECKBOX_ON, desc = "Checklist Tasks Indicator", color = MaterialTheme.colorScheme.primary)
+                            IconBadge(type = OmniIconType.CHECKBOX_ON, desc = "Checklist Tasks Indicator", color = MaterialTheme.colorScheme.primary)
                         }
                         if (hasTable) {
-                            IconBadge(type = CanvasIconType.GRID_ON, desc = "Table Block Indicator", color = MaterialTheme.colorScheme.tertiary)
+                            IconBadge(type = OmniIconType.GRID_ON, desc = "Table Block Indicator", color = MaterialTheme.colorScheme.tertiary)
                         }
                         if (hasCode) {
-                            IconBadge(type = CanvasIconType.CODE, desc = "Code Block Indicator", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            IconBadge(type = OmniIconType.CODE, desc = "Code Block Indicator", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -2344,8 +2051,8 @@ fun NoteCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
-                                    CanvasCustomIcon(
-                                        type = CanvasIconType.LABEL,
+                                    OmniIcon(
+                                        type = OmniIconType.LABEL,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(10.dp)
                                     )
@@ -2382,8 +2089,8 @@ fun NoteCard(
                         .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    CanvasCustomIcon(
-                        type = CanvasIconType.MENU_BOOK,
+                    OmniIcon(
+                        type = OmniIconType.MENU_BOOK,
                         modifier = Modifier.size(12.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2399,7 +2106,7 @@ fun NoteCard(
 }
 
 @Composable
-fun IconBadge(type: CanvasIconType, desc: String, color: Color) {
+fun IconBadge(type: OmniIconType, desc: String, color: Color) {
     Box(
         modifier = Modifier
             .size(24.dp)
@@ -2407,273 +2114,10 @@ fun IconBadge(type: CanvasIconType, desc: String, color: Color) {
             .background(color.copy(alpha = 0.12f)),
         contentAlignment = Alignment.Center
     ) {
-        CanvasCustomIcon(
+        OmniIcon(
             type = type,
             tint = color,
             modifier = Modifier.size(12.dp)
-        )
-    }
-}
-
-@Composable
-fun CanvasPremiumGemIcon(modifier: Modifier = Modifier) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-
-        val pathLeft = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.5f, 0f)
-            lineTo(w * 0.15f, h * 0.35f)
-            lineTo(w * 0.5f, h)
-            close()
-        }
-        val pathRight = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.5f, 0f)
-            lineTo(w * 0.85f, h * 0.35f)
-            lineTo(w * 0.5f, h)
-            close()
-        }
-        val pathCenter = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.5f, 0f)
-            lineTo(w * 0.35f, h * 0.35f)
-            lineTo(w * 0.5f, h * 0.75f)
-            lineTo(w * 0.65f, h * 0.35f)
-            close()
-        }
-
-        drawPath(
-            path = pathLeft,
-            brush = Brush.linearGradient(
-                colors = listOf(primaryColor.copy(alpha = 0.8f), primaryColor.copy(alpha = 0.4f)),
-                start = Offset(0f, 0f),
-                end = Offset(w, h)
-            )
-        )
-        drawPath(
-            path = pathRight,
-            brush = Brush.linearGradient(
-                colors = listOf(tertiaryColor.copy(alpha = 0.8f), tertiaryColor.copy(alpha = 0.4f)),
-                start = Offset(w, 0f),
-                end = Offset(0f, h)
-            )
-        )
-        drawPath(
-            path = pathCenter,
-            brush = Brush.linearGradient(
-                colors = listOf(Color.White.copy(alpha = 0.9f), primaryColor.copy(alpha = 0.9f)),
-                start = Offset(w * 0.5f, 0f),
-                end = Offset(w * 0.5f, h)
-            )
-        )
-    }
-}
-
-@Composable
-fun CanvasActiveTabIcon(isSelected: Boolean, modifier: Modifier = Modifier) {
-    val tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-    Canvas(modifier = modifier.size(24.dp)) {
-        val w = size.width
-        val h = size.height
-        // Draw document page background
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(w * 0.15f, h * 0.1f),
-            size = Size(w * 0.7f, h * 0.8f),
-            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
-        )
-        // Draw lines inside
-        drawLine(
-            color = tint.copy(alpha = 0.6f),
-            start = Offset(w * 0.3f, h * 0.3f),
-            end = Offset(w * 0.7f, h * 0.3f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-        drawLine(
-            color = tint.copy(alpha = 0.6f),
-            start = Offset(w * 0.3f, h * 0.5f),
-            end = Offset(w * 0.7f, h * 0.5f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-        drawLine(
-            color = tint.copy(alpha = 0.6f),
-            start = Offset(w * 0.3f, h * 0.7f),
-            end = Offset(w * 0.6f, h * 0.7f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-    }
-}
-
-@Composable
-fun CanvasArchiveTabIcon(isSelected: Boolean, modifier: Modifier = Modifier) {
-    val tint = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-    Canvas(modifier = modifier.size(24.dp)) {
-        val w = size.width
-        val h = size.height
-        // Draw outer box
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(w * 0.15f, h * 0.15f),
-            size = Size(w * 0.7f, h * 0.7f),
-            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
-        )
-        // Draw vault lock wheel
-        drawCircle(
-            color = tint,
-            radius = w * 0.18f,
-            center = Offset(w * 0.5f, h * 0.5f),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
-        )
-        // Draw lock dial ticks
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.5f, h * 0.22f),
-            end = Offset(w * 0.5f, h * 0.32f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.5f, h * 0.68f),
-            end = Offset(w * 0.5f, h * 0.78f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.22f, h * 0.5f),
-            end = Offset(w * 0.32f, h * 0.5f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.68f, h * 0.5f),
-            end = Offset(w * 0.78f, h * 0.5f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-    }
-}
-
-@Composable
-fun CanvasTrashTabIcon(isSelected: Boolean, modifier: Modifier = Modifier) {
-    val tint = if (isSelected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-    Canvas(modifier = modifier.size(24.dp)) {
-        val w = size.width
-        val h = size.height
-        // Draw can body
-        val pathBin = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.25f, h * 0.3f)
-            lineTo(w * 0.32f, h * 0.85f)
-            lineTo(w * 0.68f, h * 0.85f)
-            lineTo(w * 0.75f, h * 0.3f)
-            close()
-        }
-        drawPath(
-            path = pathBin,
-            color = tint,
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
-        )
-        // Draw lid
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.15f, h * 0.25f),
-            end = Offset(w * 0.85f, h * 0.25f),
-            strokeWidth = 2.dp.toPx()
-        )
-        // Draw lid handle
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(w * 0.4f, h * 0.15f),
-            size = Size(w * 0.2f, h * 0.1f),
-            cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx())
-        )
-        // Draw internal vertical ridges
-        drawLine(
-            color = tint.copy(alpha = 0.6f),
-            start = Offset(w * 0.45f, h * 0.4f),
-            end = Offset(w * 0.45f, h * 0.75f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-        drawLine(
-            color = tint.copy(alpha = 0.6f),
-            start = Offset(w * 0.55f, h * 0.4f),
-            end = Offset(w * 0.55f, h * 0.75f),
-            strokeWidth = 1.5.dp.toPx()
-        )
-    }
-}
-
-@Composable
-fun CanvasFilterSortIcon(modifier: Modifier = Modifier) {
-    val tint = MaterialTheme.colorScheme.onSurfaceVariant
-    Canvas(modifier = modifier.size(24.dp)) {
-        val w = size.width
-        val h = size.height
-
-        // Horizontal lines thickness
-        val lineThickness = 2.dp.toPx()
-        val knobRadius = 3.dp.toPx()
-
-        // Slider 1 (Top)
-        val y1 = h * 0.25f
-        drawLine(
-            color = tint.copy(alpha = 0.3f),
-            start = Offset(w * 0.15f, y1),
-            end = Offset(w * 0.85f, y1),
-            strokeWidth = lineThickness
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.15f, y1),
-            end = Offset(w * 0.45f, y1),
-            strokeWidth = lineThickness
-        )
-        drawCircle(
-            color = tint,
-            radius = knobRadius,
-            center = Offset(w * 0.45f, y1)
-        )
-
-        // Slider 2 (Middle)
-        val y2 = h * 0.5f
-        drawLine(
-            color = tint.copy(alpha = 0.3f),
-            start = Offset(w * 0.15f, y2),
-            end = Offset(w * 0.85f, y2),
-            strokeWidth = lineThickness
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.15f, y2),
-            end = Offset(w * 0.7f, y2),
-            strokeWidth = lineThickness
-        )
-        drawCircle(
-            color = tint,
-            radius = knobRadius,
-            center = Offset(w * 0.7f, y2)
-        )
-
-        // Slider 3 (Bottom)
-        val y3 = h * 0.75f
-        drawLine(
-            color = tint.copy(alpha = 0.3f),
-            start = Offset(w * 0.15f, y3),
-            end = Offset(w * 0.85f, y3),
-            strokeWidth = lineThickness
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.15f, y3),
-            end = Offset(w * 0.3f, y3),
-            strokeWidth = lineThickness
-        )
-        drawCircle(
-            color = tint,
-            radius = knobRadius,
-            center = Offset(w * 0.3f, y3)
         )
     }
 }

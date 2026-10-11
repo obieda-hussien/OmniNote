@@ -25,6 +25,22 @@ sealed class NoteEvent {
 
 class NotesViewModel(private val repository: NoteRepository) : ViewModel() {
 
+    val productivity = repository.productivity
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.omninote.ui.components.ProductivitySnapshot())
+    private val _productivityError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val productivityError: StateFlow<String?> = _productivityError
+    init { initializeProductivity() }
+    fun initializeProductivity() {
+        viewModelScope.launch {
+            _productivityError.value = null
+            try { repository.initializeHistory() }
+            catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _productivityError.value = "Could not load productivity history"
+            }
+        }
+    }
+
     private var openDraft: EditorDraft? = null
     fun editorDraft(id: Int?): EditorDraft = openDraft?.takeIf { it.requestedId == id && !it.discarded }
         ?: EditorDraft(id).also { openDraft = it }

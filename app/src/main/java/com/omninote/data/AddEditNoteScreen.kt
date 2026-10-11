@@ -9,6 +9,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import org.json.JSONArray
+import com.omninote.ui.components.OmniIcon
+import com.omninote.ui.components.OmniIconType
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,9 +30,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import com.omninote.ui.components.OmniSheet
 import com.omninote.ui.components.OmniConfirmDialog
@@ -569,7 +570,7 @@ fun AddEditNoteScreen(
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.BACK, modifier = Modifier.semantics { contentDescription = "Save and go back" })
+                        OmniIcon(OmniIconType.BACK, modifier = Modifier.semantics { contentDescription = "Save and go back" })
                     }
                 },
                 actions = {
@@ -577,7 +578,7 @@ fun AddEditNoteScreen(
                         onClick = { focusManager.clearFocus(); isPreviewMode = !isPreviewMode },
                         enabled = draft.loaded && !draft.closing
                     ) {
-                        CanvasCustomIcon(if (isPreviewMode) CanvasIconType.EDIT else CanvasIconType.VISIBILITY,
+                        OmniIcon(if (isPreviewMode) OmniIconType.EDIT else OmniIconType.VISIBILITY,
                             tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(6.dp))
                         Text(if (isPreviewMode) "Edit" else "Preview")
@@ -592,7 +593,7 @@ fun AddEditNoteScreen(
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.semantics { contentDescription = "Note options" })
+                        OmniIcon(OmniIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.semantics { contentDescription = "Note options" })
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -738,8 +739,8 @@ fun AddEditNoteScreen(
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                         ) {
-                                                            CanvasCustomIcon(
-                                                                type = CanvasIconType.LABEL,
+                                                            OmniIcon(
+                                                                type = OmniIconType.LABEL,
                                                                 tint = MaterialTheme.colorScheme.primary,
                                                                 modifier = Modifier.size(12.dp)
                                                             )
@@ -760,12 +761,12 @@ fun AddEditNoteScreen(
                                             horizontalArrangement = Arrangement.SpaceEvenly,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            ToolbarIconButton(CanvasIconType.UNDO, "Undo", enabled = buffer.canUndo, onClick = { buffer.undo() })
-                                            ToolbarIconButton(CanvasIconType.REDO, "Redo", enabled = buffer.canRedo, onClick = { buffer.redo() })
-                                            ToolbarIconButton(CanvasIconType.FORMAT_BOLD, "Bold text", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.wrap("**") })
-                                            ToolbarIconButton(CanvasIconType.BULLET_LIST, "Bullet list", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.prefixLines("- ") })
-                                            ToolbarIconButton(CanvasIconType.CHECKBOX_ON, "Checklist", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.prefixLines("- [ ] ") })
-                                            ToolbarIconButton(CanvasIconType.PLUS, "More formatting and attachments", tint = MaterialTheme.colorScheme.primary, onClick = { showPremiumToolsDialog = true })
+                                            ToolbarIconButton(OmniIconType.UNDO, "Undo", enabled = buffer.canUndo, onClick = { buffer.undo() })
+                                            ToolbarIconButton(OmniIconType.REDO, "Redo", enabled = buffer.canRedo, onClick = { buffer.redo() })
+                                            ToolbarIconButton(OmniIconType.FORMAT_BOLD, "Bold text", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.wrap("**") })
+                                            ToolbarIconButton(OmniIconType.BULLET_LIST, "Bullet list", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.prefixLines("- ") })
+                                            ToolbarIconButton(OmniIconType.CHECKBOX_ON, "Checklist", tint = MaterialTheme.colorScheme.primary, onClick = { buffer.prefixLines("- [ ] ") })
+                                            ToolbarIconButton(OmniIconType.PLUS, "More formatting and attachments", tint = MaterialTheme.colorScheme.primary, onClick = { showPremiumToolsDialog = true })
                                         }
                                     }
                                 }
@@ -818,7 +819,7 @@ fun AddEditNoteScreen(
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(CanvasIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                OmniIcon(OmniIconType.TUNE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
                             Text(
                                 text = "Note options",
@@ -834,7 +835,7 @@ fun AddEditNoteScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
-                            CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                         }
                     }
 
@@ -856,8 +857,8 @@ fun AddEditNoteScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                CanvasCustomIcon(
-                                    type = if (isPinned) CanvasIconType.PIN else CanvasIconType.UNPIN,
+                                OmniIcon(
+                                    type = if (isPinned) OmniIconType.PIN else OmniIconType.UNPIN,
                                     tint = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -898,7 +899,7 @@ fun AddEditNoteScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    CanvasCustomIcon(CanvasIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
+                                    OmniIcon(OmniIconType.DELETE, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = "Delete",
@@ -953,8 +954,8 @@ fun AddEditNoteScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (selectedColor == colorHex) {
-                                            CanvasCustomIcon(
-                                                type = CanvasIconType.TICK,
+                                            OmniIcon(
+                                                type = OmniIconType.TICK,
                                                 tint = if (colorHex == "#E6E3FF" || colorHex == "#FFF0CC" || colorHex == "#FFD6EC" || colorHex == null) MaterialTheme.colorScheme.primary else Color.White,
                                                 modifier = Modifier.size(18.dp)
                                             )
@@ -1070,7 +1071,7 @@ fun AddEditNoteScreen(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    CanvasCustomIcon(CanvasIconType.ATTACH_FILE, modifier = Modifier.size(16.dp))
+                                    OmniIcon(OmniIconType.ATTACH_FILE, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Export TXT", fontWeight = FontWeight.Bold)
                                 }
@@ -1096,7 +1097,7 @@ fun AddEditNoteScreen(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    CanvasCustomIcon(CanvasIconType.CODE, modifier = Modifier.size(16.dp))
+                                    OmniIcon(OmniIconType.CODE, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Export MD", fontWeight = FontWeight.Bold)
                                 }
@@ -1134,8 +1135,8 @@ fun AddEditNoteScreen(
                                         .clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
                                 ) {
-                                    CanvasCustomIcon(
-                                        type = CanvasIconType.ADD,
+                                    OmniIcon(
+                                        type = OmniIconType.ADD,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1165,9 +1166,9 @@ fun AddEditNoteScreen(
                                         },
                                         label = { Text(tag, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
                                         leadingIcon = if (isSelected) {
-                                            { CanvasCustomIcon(CanvasIconType.TICK, modifier = Modifier.size(12.dp)) }
+                                            { OmniIcon(OmniIconType.TICK, modifier = Modifier.size(12.dp)) }
                                         } else {
-                                            { CanvasCustomIcon(CanvasIconType.LABEL, modifier = Modifier.size(12.dp)) }
+                                            { OmniIcon(OmniIconType.LABEL, modifier = Modifier.size(12.dp)) }
                                         },
                                         shape = RoundedCornerShape(16.dp)
                                     )
@@ -1249,7 +1250,7 @@ fun AddEditNoteScreen(
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        CanvasCustomIcon(CanvasIconType.LABEL, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        OmniIcon(OmniIconType.LABEL, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                     }
                     Text(
                         text = "Create Custom Tag",
@@ -1324,7 +1325,7 @@ fun AddEditNoteScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        CanvasCustomIcon(CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        OmniIcon(OmniIconType.PALETTE, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Text("Color Highlight Studio", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
 
@@ -1365,8 +1366,8 @@ fun AddEditNoteScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (wizardTextColorSelected == hexCode) {
-                                    CanvasCustomIcon(
-                                        type = CanvasIconType.TICK,
+                                    OmniIcon(
+                                        type = OmniIconType.TICK,
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1398,8 +1399,8 @@ fun AddEditNoteScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (wizardBgColorSelected == hexCode) {
-                                    CanvasCustomIcon(
-                                        type = CanvasIconType.TICK,
+                                    OmniIcon(
+                                        type = OmniIconType.TICK,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1479,8 +1480,8 @@ fun AddEditNoteScreen(
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.MIC,
+                                OmniIcon(
+                                    type = OmniIconType.MIC,
                                     tint = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -1508,7 +1509,7 @@ fun AddEditNoteScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
-                            CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                         }
                     }
 
@@ -1635,8 +1636,8 @@ fun AddEditNoteScreen(
                             )
                             .border(width = 2.dp, color = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, shape = CircleShape)
                     ) {
-                        CanvasCustomIcon(
-                            type = if (isRecordingAudio) CanvasIconType.STOP else CanvasIconType.RECORD,
+                        OmniIcon(
+                            type = if (isRecordingAudio) OmniIconType.STOP else OmniIconType.RECORD,
                             tint = if (isRecordingAudio) MaterialTheme.colorScheme.onErrorContainer else Color.Red,
                             modifier = Modifier.size(44.dp)
                         )
@@ -1698,8 +1699,8 @@ fun AddEditNoteScreen(
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.MIC,
+                                OmniIcon(
+                                    type = OmniIconType.MIC,
                                     tint = if (isListeningSpeech) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -1724,7 +1725,7 @@ fun AddEditNoteScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
-                            CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                         }
                     }
 
@@ -1751,7 +1752,7 @@ fun AddEditNoteScreen(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             } else {
-                                CanvasCustomIcon(CanvasIconType.INFO, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                OmniIcon(OmniIconType.INFO, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                             }
                             Text(
                                 text = dictationStatusMessage,
@@ -1809,8 +1810,8 @@ fun AddEditNoteScreen(
                                 containerColor = if (isListeningSpeech) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                             )
                         ) {
-                            CanvasCustomIcon(
-                                type = if (isListeningSpeech) CanvasIconType.STOP else CanvasIconType.MIC,
+                            OmniIcon(
+                                type = if (isListeningSpeech) OmniIconType.STOP else OmniIconType.MIC,
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -1863,8 +1864,8 @@ fun AddEditNoteScreen(
                                     strokeWidth = 2.dp
                                 )
                             } else {
-                                CanvasCustomIcon(
-                                    type = CanvasIconType.WAND,
+                                OmniIcon(
+                                    type = OmniIconType.WAND,
                                     tint = MaterialTheme.colorScheme.onTertiary,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -1941,7 +1942,7 @@ fun AddEditNoteScreen(
                                     .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CanvasCustomIcon(CanvasIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                                OmniIcon(OmniIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
                             }
                             Text(
                                 "Table Generator",
@@ -1957,7 +1958,7 @@ fun AddEditNoteScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                         ) {
-                            CanvasCustomIcon(CanvasIconType.CLOSE, modifier = Modifier.size(16.dp))
+                            OmniIcon(OmniIconType.CLOSE, modifier = Modifier.size(16.dp))
                         }
                     }
 
@@ -2046,8 +2047,8 @@ fun AddEditNoteScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CanvasCustomIcon(
-                            type = CanvasIconType.WAND,
+                        OmniIcon(
+                            type = OmniIconType.WAND,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(32.dp)
                         )
@@ -2070,13 +2071,13 @@ fun AddEditNoteScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            PremiumToolChip(label = "Heading 1", iconType = CanvasIconType.HEADING_1) { buffer.prefixLines("# "); showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Heading 2", iconType = CanvasIconType.HEADING_2) { buffer.prefixLines("## "); showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Italics", iconType = CanvasIconType.FORMAT_ITALIC) { buffer.wrap("*"); showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Marker", iconType = CanvasIconType.HIGHLIGHT) { buffer.wrap("=="); showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Quote block", iconType = CanvasIconType.QUOTE) { buffer.prefixLines("> "); showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Code Block", iconType = CanvasIconType.CODE) { buffer.wrap("\n```\n", "\n```\n"); showPremiumToolsDialog = false }
-                            PremiumToolChip(label = "Bullet List", iconType = CanvasIconType.BULLET_LIST) { buffer.prefixLines("- "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Heading 1", iconType = OmniIconType.HEADING_1) { buffer.prefixLines("# "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Heading 2", iconType = OmniIconType.HEADING_2) { buffer.prefixLines("## "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Italics", iconType = OmniIconType.FORMAT_ITALIC) { buffer.wrap("*"); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Marker", iconType = OmniIconType.HIGHLIGHT) { buffer.wrap("=="); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Quote block", iconType = OmniIconType.QUOTE) { buffer.prefixLines("> "); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Code Block", iconType = OmniIconType.CODE) { buffer.wrap("\n```\n", "\n```\n"); showPremiumToolsDialog = false }
+                            PremiumToolChip(label = "Bullet List", iconType = OmniIconType.BULLET_LIST) { buffer.prefixLines("- "); showPremiumToolsDialog = false }
                         }
 
                         Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
@@ -2087,10 +2088,10 @@ fun AddEditNoteScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            PremiumInteractiveCard(title = "AI Voice Dictation", description = "Transcribe and clean up voice notes with Gemini AI", iconType = CanvasIconType.MIC, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; checkAndRequestDictation() }
-                            PremiumInteractiveCard(title = "Text color & highlight", description = "Format with tailored backgrounds & text highlights", iconType = CanvasIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { wizardTextToFormat = contentValue.text.substring(contentValue.selection.min, contentValue.selection.max); showPremiumToolsDialog = false; showColorHighlightWizard = true }
-                            PremiumInteractiveCard(title = "Insert table", description = "Insert customized grid spreadsheets dynamically", iconType = CanvasIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
-                            PremiumInteractiveCard(title = "Attach file", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = CanvasIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
+                            PremiumInteractiveCard(title = "AI Voice Dictation", description = "Transcribe and clean up voice notes with Gemini AI", iconType = OmniIconType.MIC, tint = MaterialTheme.colorScheme.primary) { showPremiumToolsDialog = false; checkAndRequestDictation() }
+                            PremiumInteractiveCard(title = "Text color & highlight", description = "Format with tailored backgrounds & text highlights", iconType = OmniIconType.PALETTE, tint = MaterialTheme.colorScheme.primary) { wizardTextToFormat = contentValue.text.substring(contentValue.selection.min, contentValue.selection.max); showPremiumToolsDialog = false; showColorHighlightWizard = true }
+                            PremiumInteractiveCard(title = "Insert table", description = "Insert customized grid spreadsheets dynamically", iconType = OmniIconType.GRID_ON, tint = MaterialTheme.colorScheme.secondary) { showPremiumToolsDialog = false; showTableGeneratorDialog = true }
+                            PremiumInteractiveCard(title = "Attach file", description = "Attach PDF, ZIP or spreadsheet documents safely", iconType = OmniIconType.ATTACH_FILE, tint = MaterialTheme.colorScheme.tertiary) { showPremiumToolsDialog = false; checkAndRequestFileStorage() }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
@@ -2102,7 +2103,7 @@ fun AddEditNoteScreen(
 
 @Composable
 fun ToolbarIconButton(
-    iconType: CanvasIconType,
+    iconType: OmniIconType,
     contentDescription: String,
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     containerColor: Color = Color.Transparent,
@@ -2118,7 +2119,7 @@ fun ToolbarIconButton(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        CanvasCustomIcon(
+        OmniIcon(
             type = iconType,
             tint = if (enabled) tint else tint.copy(alpha = 0.3f),
             modifier = Modifier.size(24.dp)
@@ -2154,7 +2155,7 @@ fun AnalyticsRow(
 @Composable
 fun PremiumToolChip(
     label: String,
-    iconType: CanvasIconType,
+    iconType: OmniIconType,
     onClick: () -> Unit
 ) {
     InputChip(
@@ -2167,7 +2168,7 @@ fun PremiumToolChip(
             )
         },
         leadingIcon = {
-            CanvasCustomIcon(
+            OmniIcon(
                 type = iconType,
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.primary
@@ -2191,7 +2192,7 @@ fun PremiumToolChip(
 fun PremiumInteractiveCard(
     title: String,
     description: String,
-    iconType: CanvasIconType,
+    iconType: OmniIconType,
     tint: Color,
     onClick: () -> Unit
 ) {
@@ -2218,7 +2219,7 @@ fun PremiumInteractiveCard(
                     .background(tint.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                CanvasCustomIcon(
+                OmniIcon(
                     type = iconType,
                     tint = tint,
                     modifier = Modifier.size(22.dp)
@@ -2242,8 +2243,8 @@ fun PremiumInteractiveCard(
                 )
             }
 
-            CanvasCustomIcon(
-                type = CanvasIconType.ARROW_RIGHT,
+            OmniIcon(
+                type = OmniIconType.ARROW_RIGHT,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier.size(20.dp)
             )

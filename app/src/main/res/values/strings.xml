@@ -12,7 +12,7 @@
     <string name="notes_count_label">notes</string>
     <string name="search_notes">Search notes</string>
     <string name="clear_search">Clear search</string>
-    <string name="note_statistics">Note statistics</string>
+    <string name="note_statistics">Your productivity — all notes</string>
     <string name="list_view">List view</string>
     <string name="grid_view">Grid view</string>
     <string name="sort_filter">Sort &amp; filter</string>
@@ -25,5 +25,37 @@
     <string name="quick_note">Quick note</string>
     <string name="save_quick_note">Save quick note</string>
     <string name="show_library_navigation">Show library navigation</string>
+    <string name="productivity_title">Your productivity</string>
+    <string name="productivity_global">All notes · every section · saved history</string>
+    <string name="close_dashboard">Close productivity</string>
+    <string name="productivity_error">Could not load your history. Your notes are still here.</string>
+    <string name="productivity_loading">Preparing your history…</string>
+    <string name="retry">Retry</string>
+    <string name="period_all_time">All time</string>
+    <string name="period_week">7 days</string>
+    <string name="period_month">30 days</string>
+    <string name="notes_recorded">Notes recorded</string>
+    <string name="notes_created">Notes created</string>
+    <string name="words_recorded">Words recorded</string>
+    <string name="words_added">Words added</string>
+    <string name="permanently_deleted">Deleted forever</string>
+    <string name="writing_days">Writing days</string>
+    <string name="words_recorded_help">Includes existing words and new words added while writing. Removing words does not erase your recorded work.</string>
+    <string name="current_library">Current library · all sections</string>
+    <string name="active_section">Active</string>
+    <string name="current_word_count">%1$d words currently saved</string>
+    <string name="current_streak">Current writing streak: %1$d days</string>
+    <string name="activity_history">Activity history</string>
+    <string name="no_activity_yet">Your next writing session or library change will appear here.</string>
+    <string name="recent_activity_limit">Showing the 30 most recent days with activity.</string>
+    <string name="tracking_baseline">Tracking started %1$s with %2$d existing notes. Notes deleted before tracking began cannot be counted.</string>
+    <string name="history_privacy">History keeps counts and dates only. Deleted note text, titles and attachments are not kept here.</string>
+    <string name="activity_writing">%1$d notes worked on · %2$d words added</string>
+    <string name="activity_created">%1$d created</string>
+    <string name="activity_archived">%1$d archived</string>
+    <string name="activity_restored">%1$d restored</string>
+    <string name="activity_deleted">%1$d deleted forever</string>
+    <string name="library_organized">Library organized</string>
+    <string name="done">Done</string>
 </resources>
 

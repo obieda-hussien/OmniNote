@@ -42,9 +42,9 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             AppDatabase::class.java,
             "omninote_database"
-        ).fallbackToDestructiveMigration().build()
+        ).addMigrations(*com.omninote.data.DatabaseMigrations.all).build()
         
-        val repository = NoteRepository(database.noteDao())
+        val repository = NoteRepository(database.noteDao(), database)
         
         var initialSharedText: String? = null
         var initialSharedUris: List<android.net.Uri>? = null

@@ -8,8 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,7 +43,7 @@ fun NoteLibraryHeader(
                         Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    IconButton(onClick = onStats) { Icon(Icons.Outlined.Insights, stringResource(R.string.note_statistics)) }
+                    IconButton(onClick = onStats) { Icon(omniIconVector(OmniIconType.INSIGHTS), stringResource(R.string.note_statistics)) }
                 }
             }
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -53,22 +53,22 @@ fun NoteLibraryHeader(
                         textStyle = MaterialTheme.typography.bodyMedium,
                         placeholder = { Text(stringResource(R.string.search_notes)) },
                         trailingIcon = { IconButton(onClick = { onQueryChange(""); searching = false; focusManager.clearFocus() }) {
-                            Icon(Icons.Outlined.Close, stringResource(R.string.clear_search))
+                            Icon(Icons.Rounded.Close, stringResource(R.string.clear_search))
                         } })
                 } else {
-                    IconButton(onClick = { searching = true }) { Icon(Icons.Outlined.Search, stringResource(R.string.search_notes)) }
+                    IconButton(onClick = { searching = true }) { Icon(Icons.Rounded.Search, stringResource(R.string.search_notes)) }
                     if (!expanded) IconButton(onClick = onExpand) {
-                        Icon(Icons.Outlined.KeyboardArrowDown, stringResource(R.string.show_library_navigation))
+                        Icon(Icons.Rounded.KeyboardArrowDown, stringResource(R.string.show_library_navigation))
                     }
                     Spacer(Modifier.weight(1f))
                 }
                 IconButton(onClick = onLayoutChange) {
-                    Icon(if (grid) Icons.AutoMirrored.Filled.ViewList else Icons.Outlined.GridView,
+                    Icon(if (grid) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView,
                         stringResource(if (grid) R.string.list_view else R.string.grid_view))
                 }
                 IconButton(onClick = onFilter) {
                     BadgedBox(badge = { if (filtersActive) Badge() }) {
-                        Icon(Icons.Outlined.Tune, stringResource(R.string.sort_filter))
+                        Icon(Icons.Rounded.Tune, stringResource(R.string.sort_filter))
                     }
                 }
             }

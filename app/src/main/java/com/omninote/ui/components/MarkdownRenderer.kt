@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -155,7 +155,7 @@ fun ImageLayout(uriString: String, description: String) {
                     .fillMaxWidth()
                     .heightIn(min = 120.dp, max = 240.dp),
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                error = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery)
+                error = androidx.compose.ui.res.painterResource(com.omninote.R.drawable.ic_image_placeholder)
             )
             if (description.isNotBlank()) {
                 Text(
@@ -197,7 +197,7 @@ fun ImageLayout(uriString: String, description: String) {
                             modifier = Modifier.weight(1f).padding(end = 8.dp)
                         )
                         IconButton(onClick = { showDialog = false }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close")
+                            Icon(Icons.Rounded.Close, contentDescription = "Close")
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
@@ -335,7 +335,7 @@ fun AudioPlayerLayout(uriString: String, label: String) {
             ) {
                 if (isLoading) CircularProgressIndicator(modifier = Modifier.size(22.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                 else Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(24.dp)
@@ -448,7 +448,7 @@ fun FileAttachmentLayout(uriString: String, filename: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Default.InsertDriveFile,
+                imageVector = Icons.Rounded.InsertDriveFile,
                 contentDescription = "File attachment",
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(28.dp)
@@ -470,7 +470,7 @@ fun FileAttachmentLayout(uriString: String, filename: String) {
                 )
             }
             Icon(
-                imageVector = Icons.Default.OpenInNew,
+                imageVector = Icons.Rounded.OpenInNew,
                 contentDescription = "Open file",
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp)
@@ -679,7 +679,7 @@ fun CodeBlockLayout(code: String, language: String) {
                     )
                 }
                 Icon(
-                    imageVector = Icons.Default.Code,
+                    imageVector = Icons.Rounded.Code,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier.size(16.dp)
@@ -815,9 +815,9 @@ fun AttachmentOptionsDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(
-                imageVector = if (mimeType.startsWith("image/")) Icons.Default.Image
-                              else if (mimeType.startsWith("audio/")) Icons.Default.PlayArrow
-                              else Icons.Default.InsertDriveFile,
+                imageVector = if (mimeType.startsWith("image/")) Icons.Rounded.Image
+                              else if (mimeType.startsWith("audio/")) Icons.Rounded.PlayArrow
+                              else Icons.Rounded.InsertDriveFile,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(36.dp)
@@ -875,7 +875,7 @@ fun AttachmentOptionsDialog(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Build, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Install APK", fontWeight = FontWeight.Bold)
                     }
@@ -908,7 +908,7 @@ fun AttachmentOptionsDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(if (isApk) "Open as File (View Contents)" else "Open with another app", fontWeight = FontWeight.Bold)
                 }
@@ -941,7 +941,7 @@ fun AttachmentOptionsDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Share attachment", fontWeight = FontWeight.Bold)
                 }

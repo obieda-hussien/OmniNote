@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,7 +42,7 @@ internal fun MarkdownTable(table: TableBlock) {
         Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Outlined.TableChart, null, tint = primary, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.TableChart, null, tint = primary, modifier = Modifier.size(20.dp))
                 Text(title, style = MaterialTheme.typography.labelLarge)
                 Text(summary, style = MaterialTheme.typography.labelSmall, color = secondary, modifier = Modifier.weight(1f))
             }
