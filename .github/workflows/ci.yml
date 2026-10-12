@@ -406,6 +406,16 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload available native debug symbols
+        uses: actions/upload-artifact@v6
+        with:
+          name: Omni-NotePlus-native-debug-symbols-${{ github.run_number }}
+          path: app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
+          # Pre-stripped dependencies may have no extractable symbols. The AAB
+          # verification step reports those libraries explicitly.
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Upload release APK
         uses: actions/upload-artifact@v6
         with:
