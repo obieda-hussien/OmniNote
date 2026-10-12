@@ -16,8 +16,8 @@ android {
     applicationId = "com.omni.noteplus"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0.0"
+    versionCode = 2
+    versionName = "1.0.1"
 
     buildConfigField("String", "GEMINI_API_KEY", geminiApiKey.map { key ->
       "\"" + key.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -42,6 +42,9 @@ android {
 
   buildTypes {
     release {
+      // Embed available native symbols in the AAB for Google Play crash reports.
+      // Dependencies shipped already stripped require symbols from their publisher.
+      ndk.debugSymbolLevel = "FULL"
       isCrunchPngs = false
       isMinifyEnabled = true
       isShrinkResources = true
